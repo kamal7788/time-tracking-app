@@ -19,7 +19,7 @@ export default function AdminSettingsPage() {
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(true)
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({
+  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<z.infer<typeof emailSettingsSchema>>({
     resolver: zodResolver(emailSettingsSchema),
   })
 
