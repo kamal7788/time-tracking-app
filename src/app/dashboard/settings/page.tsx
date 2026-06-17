@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { changePasswordSchema } from '@/lib/validations'
 import { z } from 'zod'
 
 const timeZoneSchema = z.object({
@@ -69,6 +70,10 @@ export default function SettingsPage() {
     resolver: zodResolver(timeZoneSchema),
   })
 
+  const { register: registerPassword, handleSubmit: handleSubmitPassword, reset: resetPassword, formState: { errors: passwordErrors, isSubmitting: passwordSubmitting } } = useForm<z.infer<typeof changePasswordSchema>>({
+    resolver: zodResolver(changePasswordSchema),
+  })
+
   useEffect(() => {
     fetchUser()
   }, [])
@@ -100,6 +105,24 @@ export default function SettingsPage() {
       fetchUser()
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to update profile')
+    }
+  }
+
+  const onSubmitPassword = async (data: z.infer<typeof changePasswordSchema>) => {
+    setSuccess('')
+    setError('')
+    try {
+      const res = await fetch('/api/user/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error)
+      setSuccess('Password changed successfully')
+      resetPassword()
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to change password')
     }
   }
 
@@ -180,6 +203,50 @@ export default function SettingsPage() {
             <div className="flex justify-end">
               <button type="submit" disabled={profileSubmitting} className="btn-primary">
                 {profileSubmitting ? 'Saving...' : 'Save Profile'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* Change Password */}
+      <div className="card">
+        <div className="card-header">
+          <h2 className="text-lg font-semibold text-gray-900">Change Password</h2>
+          <p className="text-sm text-gray-500 mt-1">Update your account password</p>
+        </div>
+        <div className="card-body">
+          <form onSubmit={handleSubmitPassword(onSubmitPassword)} className="space-y-4">
+            <div>
+              <label className="label">Current Password</label>
+              <input
+                type="password"
+                {...registerPassword('currentPassword')}
+                className="input"
+              />
+              {passwordErrors.currentPassword && <p className="text-sm text-red-600 mt-1">{passwordErrors.currentPassword.message}</p>}
+            </div>
+            <div>
+              <label className="label">New Password</label>
+              <input
+                type="password"
+                {...registerPassword('newPassword')}
+                className="input"
+              />
+              {passwordErrors.newPassword && <p className="text-sm text-red-600 mt-1">{passwordErrors.newPassword.message}</p>}
+            </div>
+            <div>
+              <label className="label">Confirm New Password</label>
+              <input
+                type="password"
+                {...registerPassword('confirmPassword')}
+                className="input"
+              />
+              {passwordErrors.confirmPassword && <p className="text-sm text-red-600 mt-1">{passwordErrors.confirmPassword.message}</p>}
+            </div>
+            <div className="flex justify-end">
+              <button type="submit" disabled={passwordSubmitting} className="btn-primary">
+                {passwordSubmitting ? 'Changing...' : 'Change Password'}
               </button>
             </div>
           </form>

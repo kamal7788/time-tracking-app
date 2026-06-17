@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getSession, requireAuth } from '@/lib/auth'
+import { getSession, requireAuth, verifyPassword, hashPassword } from '@/lib/auth'
+import { changePasswordSchema } from '@/lib/validations'
 import { z } from 'zod'
 
 const timeZoneSchema = z.object({
@@ -65,6 +66,29 @@ export async function PATCH(request: NextRequest) {
       await prisma.user.update({
         where: { id: session.userId },
         data: { timeZone: validated.timeZone },
+      })
+    }
+
+    // Update password if provided
+    if (body.currentPassword && body.newPassword) {
+      const validated = changePasswordSchema.parse({
+        currentPassword: body.currentPassword,
+        newPassword: body.newPassword,
+        confirmPassword: body.confirmPassword,
+      })
+
+      const isValid = await verifyPassword(validated.currentPassword, user.passwordHash)
+      if (!isValid) {
+        return NextResponse.json(
+          { error: 'Current password is incorrect' },
+          { status: 400 }
+        )
+      }
+
+      const passwordHash = await hashPassword(validated.newPassword)
+      await prisma.user.update({
+        where: { id: session.userId },
+        data: { passwordHash },
       })
     }
 
