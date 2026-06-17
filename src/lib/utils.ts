@@ -1,15 +1,14 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { format } from 'date-fns'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatDate(date: Date | string, format: string = 'PPP'): string {
+export function formatDate(date: Date | string, formatStr: string = 'PPP'): string {
   const d = typeof date === 'string' ? new Date(date) : date
-  return new Intl.DateTimeFormat('en-US', {
-    dateStyle: format as any,
-  }).format(d)
+  return format(d, formatStr)
 }
 
 export function formatTime(date: Date | string): string {
