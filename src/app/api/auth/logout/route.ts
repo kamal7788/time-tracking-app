@@ -2,13 +2,6 @@ import { NextResponse } from 'next/server'
 import { clearAuthCookie, getSession } from '@/lib/auth'
 import { createAuditLog, AuditActions, AuditEntities } from '@/lib/audit'
 
-export async function GET() {
-  await clearAuthCookie()
-  return NextResponse.redirect(new URL('/login', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'))
-}
-
-export const dynamic = 'force-dynamic'
-
 export async function POST() {
   try {
     const session = await getSession()

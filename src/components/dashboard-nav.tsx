@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
 const navigation = [
@@ -15,6 +15,13 @@ const navigation = [
 
 export default function DashboardNav() {
   const pathname = usePathname()
+  const router = useRouter()
+
+  const handleSignOut = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    router.push('/login')
+    router.refresh()
+  }
 
   return (
     <nav className="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-50">
@@ -46,9 +53,9 @@ export default function DashboardNav() {
             </div>
 
             <div className="flex items-center space-x-4">
-              <Link href="/api/auth/logout" className="text-sm text-gray-600 hover:text-gray-900">
+              <button onClick={handleSignOut} className="text-sm text-gray-600 hover:text-gray-900">
                 Sign out
-              </Link>
+              </button>
             </div>
           </div>
         </div>
