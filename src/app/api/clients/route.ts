@@ -1,15 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAdmin } from '@/lib/auth'
+import { requireAuth } from '@/lib/auth'
 import { clientSchema } from '@/lib/validations'
 import { createAuditLog, AuditActions, AuditEntities } from '@/lib/audit'
 
 export async function GET() {
   try {
-    await requireAdmin()
+    const session = await requireAuth()
+
+    const where: Record<string, unknown> = { isActive: true }
+    if (session.role !== 'ADMIN') {
+      where.OR = [
+        { isPersonal: false },
+        { managerId: session.userId },
+      ]
+    } else {
+      where.isPersonal = false
+    }
 
     const clients = await prisma.client.findMany({
-      where: { isActive: true },
+      where,
       include: {
         manager: {
           select: { id: true, name: true, email: true },
@@ -23,9 +33,6 @@ export async function GET() {
 
     return NextResponse.json({ clients })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -39,15 +46,18 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireAdmin()
+    const session = await requireAuth()
     const body = await request.json()
     const validated = clientSchema.parse(body)
+
+    const isPersonal = session.role !== 'ADMIN'
 
     const client = await prisma.client.create({
       data: {
         name: validated.name,
         description: validated.description,
         managerId: session.userId,
+        isPersonal,
       },
     })
 
@@ -56,14 +66,11 @@ export async function POST(request: NextRequest) {
       action: AuditActions.CREATE,
       entity: AuditEntities.CLIENT,
       entityId: client.id,
-      newData: { name: client.name, description: client.description },
+      newData: { name: client.name, description: client.description, isPersonal },
     })
 
     return NextResponse.json({ client }, { status: 201 })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

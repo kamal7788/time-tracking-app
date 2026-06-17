@@ -30,7 +30,13 @@ export default async function TimeEntriesPage() {
   })
 
   const projects = await prisma.project.findMany({
-    where: { isActive: true },
+    where: {
+      isActive: true,
+      OR: [
+        { isPersonal: false },
+        { managerId: session.userId },
+      ],
+    },
     include: { client: true },
     orderBy: { name: 'asc' },
   })

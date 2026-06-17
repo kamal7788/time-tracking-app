@@ -81,6 +81,7 @@ model Client {
   isActive    Boolean   @default(true)
   managerId   String
   manager     User      @relation("ClientManager", fields: [managerId], references: [id])
+  isPersonal  Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -98,6 +99,7 @@ model Project {
   managerId   String
   manager     User     @relation("ProjectManager", fields: [managerId], references: [id])
   isActive    Boolean  @default(true)
+  isPersonal  Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

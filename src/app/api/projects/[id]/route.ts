@@ -1,18 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAdmin } from '@/lib/auth'
+import { requireAuth } from '@/lib/auth'
 import { projectSchema } from '@/lib/validations'
 import { createAuditLog, AuditActions, AuditEntities } from '@/lib/audit'
+
+async function authorizeProjectAccess(id: string, userId: string, role: string) {
+  const project = await prisma.project.findUnique({ where: { id } })
+  if (!project) return null
+  if (role === 'ADMIN' && !project.isPersonal) return project
+  if (project.managerId === userId && project.isPersonal) return project
+  return null
+}
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdmin()
+    const session = await requireAuth()
     const { id } = await params
 
-    const project = await prisma.project.findUnique({
+    const project = await authorizeProjectAccess(id, session.userId, session.role)
+    if (!project) {
+      return NextResponse.json(
+        { error: 'Project not found' },
+        { status: 404 }
+      )
+    }
+
+    const fullProject = await prisma.project.findUnique({
       where: { id },
       include: {
         client: true,
@@ -22,18 +38,8 @@ export async function GET(
       },
     })
 
-    if (!project) {
-      return NextResponse.json(
-        { error: 'Project not found' },
-        { status: 404 }
-      )
-    }
-
-    return NextResponse.json({ project })
+    return NextResponse.json({ project: fullProject })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -50,18 +56,32 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await requireAdmin()
+    const session = await requireAuth()
     const { id } = await params
     const body = await request.json()
     const validated = projectSchema.parse(body)
 
-    const existingProject = await prisma.project.findUnique({
-      where: { id },
-    })
-
+    const existingProject = await authorizeProjectAccess(id, session.userId, session.role)
     if (!existingProject) {
       return NextResponse.json(
         { error: 'Project not found' },
+        { status: 404 }
+      )
+    }
+
+    // Verify the new client is accessible
+    const client = await prisma.client.findUnique({
+      where: { id: validated.clientId },
+    })
+    if (!client) {
+      return NextResponse.json(
+        { error: 'Client not found' },
+        { status: 404 }
+      )
+    }
+    if (client.isPersonal && client.managerId !== session.userId) {
+      return NextResponse.json(
+        { error: 'Client not found' },
         { status: 404 }
       )
     }
@@ -83,23 +103,20 @@ export async function PUT(
       action: AuditActions.UPDATE,
       entity: AuditEntities.PROJECT,
       entityId: project.id,
-      oldData: { 
-        name: existingProject.name, 
-        description: existingProject.description, 
-        clientId: existingProject.clientId 
+      oldData: {
+        name: existingProject.name,
+        description: existingProject.description,
+        clientId: existingProject.clientId,
       },
-      newData: { 
-        name: project.name, 
-        description: project.description, 
-        clientId: project.clientId 
+      newData: {
+        name: project.name,
+        description: project.description,
+        clientId: project.clientId,
       },
     })
 
     return NextResponse.json({ project })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -122,14 +139,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await requireAdmin()
+    const session = await requireAuth()
     const { id } = await params
 
-    const existingProject = await prisma.project.findUnique({
-      where: { id },
-      include: { timeEntries: true },
-    })
-
+    const existingProject = await authorizeProjectAccess(id, session.userId, session.role)
     if (!existingProject) {
       return NextResponse.json(
         { error: 'Project not found' },
@@ -137,7 +150,12 @@ export async function DELETE(
       )
     }
 
-    if (existingProject.timeEntries.length > 0) {
+    const withEntries = await prisma.project.findUnique({
+      where: { id },
+      include: { timeEntries: true },
+    })
+
+    if (withEntries && withEntries.timeEntries.length > 0) {
       return NextResponse.json(
         { error: 'Cannot delete project with time entries' },
         { status: 400 }
@@ -159,9 +177,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

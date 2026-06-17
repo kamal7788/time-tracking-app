@@ -1,18 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAdmin } from '@/lib/auth'
+import { requireAuth } from '@/lib/auth'
 import { clientSchema } from '@/lib/validations'
 import { createAuditLog, AuditActions, AuditEntities } from '@/lib/audit'
+
+async function authorizeClientAccess(id: string, userId: string, role: string) {
+  const client = await prisma.client.findUnique({ where: { id } })
+  if (!client) return null
+  if (role === 'ADMIN' && !client.isPersonal) return client
+  if (client.managerId === userId && client.isPersonal) return client
+  return null
+}
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdmin()
+    const session = await requireAuth()
     const { id } = await params
 
-    const client = await prisma.client.findUnique({
+    const client = await authorizeClientAccess(id, session.userId, session.role)
+    if (!client) {
+      return NextResponse.json(
+        { error: 'Client not found' },
+        { status: 404 }
+      )
+    }
+
+    const fullClient = await prisma.client.findUnique({
       where: { id },
       include: {
         manager: {
@@ -29,18 +45,8 @@ export async function GET(
       },
     })
 
-    if (!client) {
-      return NextResponse.json(
-        { error: 'Client not found' },
-        { status: 404 }
-      )
-    }
-
-    return NextResponse.json({ client })
+    return NextResponse.json({ client: fullClient })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -57,15 +63,12 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await requireAdmin()
+    const session = await requireAuth()
     const { id } = await params
     const body = await request.json()
     const validated = clientSchema.parse(body)
 
-    const existingClient = await prisma.client.findUnique({
-      where: { id },
-    })
-
+    const existingClient = await authorizeClientAccess(id, session.userId, session.role)
     if (!existingClient) {
       return NextResponse.json(
         { error: 'Client not found' },
@@ -92,9 +95,6 @@ export async function PUT(
 
     return NextResponse.json({ client })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -117,14 +117,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await requireAdmin()
+    const session = await requireAuth()
     const { id } = await params
 
-    const existingClient = await prisma.client.findUnique({
-      where: { id },
-      include: { projects: true },
-    })
-
+    const existingClient = await authorizeClientAccess(id, session.userId, session.role)
     if (!existingClient) {
       return NextResponse.json(
         { error: 'Client not found' },
@@ -132,7 +128,12 @@ export async function DELETE(
       )
     }
 
-    if (existingClient.projects.length > 0) {
+    const withProjects = await prisma.client.findUnique({
+      where: { id },
+      include: { projects: true },
+    })
+
+    if (withProjects && withProjects.projects.length > 0) {
       return NextResponse.json(
         { error: 'Cannot delete client with active projects' },
         { status: 400 }
@@ -154,9 +155,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

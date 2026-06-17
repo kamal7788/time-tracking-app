@@ -7,11 +7,11 @@ export default async function ClientsPage() {
   if (!session) return null
 
   const clients = await prisma.client.findMany({
-    where: { isActive: true },
+    where: { isActive: true, isPersonal: false },
     include: {
       manager: { select: { id: true, name: true, email: true } },
       projects: {
-        where: { isActive: true },
+        where: { isActive: true, isPersonal: false },
         include: {
           manager: { select: { id: true, name: true } },
         },

@@ -17,7 +17,13 @@ export default async function CommonWorksPage() {
   })
 
   const projects = await prisma.project.findMany({
-    where: { isActive: true },
+    where: {
+      isActive: true,
+      OR: [
+        { isPersonal: false },
+        { managerId: session.userId },
+      ],
+    },
     include: { client: true },
     orderBy: { name: 'asc' },
   })
