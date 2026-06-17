@@ -26,7 +26,7 @@ export default async function LeavesPage() {
 
   const leaveRequests = await prisma.leaveRequest.findMany({
     where: { userId: session.userId },
-    include: { leaveType: true },
+    include: { leaveType: true, approvedBy: { select: { name: true } } },
     orderBy: { createdAt: 'desc' },
     take: 10,
   })
