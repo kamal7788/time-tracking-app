@@ -61,11 +61,11 @@ export default function SettingsPage() {
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
 
-  const { register: registerProfile, handleSubmit: handleSubmitProfile, formState: { errors: profileErrors, isSubmitting: profileSubmitting } } = useForm({
+  const { register: registerProfile, handleSubmit: handleSubmitProfile, formState: { errors: profileErrors, isSubmitting: profileSubmitting } } = useForm<z.infer<typeof profileSchema>>({
     resolver: zodResolver(profileSchema),
   })
 
-  const { register: registerTimezone, handleSubmit: handleSubmitTimezone, formState: { errors: tzErrors, isSubmitting: tzSubmitting } } = useForm({
+  const { register: registerTimezone, handleSubmit: handleSubmitTimezone, formState: { errors: tzErrors, isSubmitting: tzSubmitting } } = useForm<z.infer<typeof timeZoneSchema>>({
     resolver: zodResolver(timeZoneSchema),
   })
 
