@@ -1,0 +1,50 @@
+{
+  "name": "time-tracking-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "next": "14.2.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@prisma/client": "^5.10.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "jose": "^5.2.0",
+    "zod": "^3.22.4",
+    "date-fns": "^3.3.1",
+    "react-hook-form": "^7.51.0",
+    "@hookform/resolvers": "^3.3.4",
+    "nodemailer": "^6.9.12",
+    "xlsx": "^0.18.5",
+    "jspdf": "^2.5.1",
+    "jspdf-autotable": "^3.8.2",
+    "clsx": "^2.1.0",
+    "tailwind-merge": "^2.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/nodemailer": "^6.4.14",
+    "typescript": "^5.3.0",
+    "tailwindcss": "^3.4.1",
+    "postcss": "^8.4.35",
+    "autoprefixer": "^10.4.17",
+    "prisma": "^5.10.0",
+    "eslint": "^8.56.0",
+    "eslint-config-next": "14.2.0"
+  }
+}

@@ -1,0 +1,266 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum TimeEntryStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum ClockSessionStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model User {
+  id            String       @id @default(cuid())
+  email         String       @unique
+  passwordHash  String
+  name          String
+  role          UserRole     @default(USER)
+  emailVerified DateTime?
+  timeZone      String       @default("Asia/Kathmandu")
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  timeEntries       TimeEntry[]
+  commonWorks       CommonWork[]
+  clockSessions     ClockSession[]
+  leaveBalances     LeaveBalance[]
+  leaveRequests     LeaveRequest[] @relation("LeaveRequestUser")
+  approvedLeaveRequests LeaveRequest[] @relation("LeaveRequestApprover")
+  clients           Client[]     @relation("ClientManager")
+  projects          Project[]    @relation("ProjectManager")
+  sentNotifications Notification[] @relation("NotificationSender")
+  receivedNotifications Notification[] @relation("NotificationRecipient")
+  emailSettings     EmailSettings?
+
+  @@map("users")
+}
+
+model EmailSettings {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  smtpHost  String?
+  smtpPort  Int?
+  smtpUser  String?
+  smtpPass  String?
+  fromEmail String?
+  fromName  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("email_settings")
+}
+
+model Client {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean   @default(true)
+  managerId   String
+  manager     User      @relation("ClientManager", fields: [managerId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  projects    Project[]
+
+  @@map("clients")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  managerId   String
+  manager     User     @relation("ProjectManager", fields: [managerId], references: [id])
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  timeEntries TimeEntry[]
+
+  @@map("projects")
+}
+
+model TimeEntry {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  date        DateTime         @db.Date
+  startTime   DateTime         @db.Time
+  endTime     DateTime         @db.Time
+  duration    Int              // in minutes
+  description String?
+  status      TimeEntryStatus  @default(DRAFT)
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  approvedBy  String?
+  rejectedAt  DateTime?
+  rejectedBy  String?
+  rejectReason String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([userId, date])
+  @@index([projectId, date])
+  @@index([status])
+  @@map("time_entries")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  senderId  String?
+  sender    User?    @relation("NotificationSender", fields: [senderId], references: [id], onDelete: SetNull)
+  type      String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  entity    String
+  entityId  String
+  oldData   Json?
+  newData   Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
+
+model CommonWork {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  defaultDuration Int?    // in minutes
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+  @@map("common_works")
+}
+
+model ClockSession {
+  id          String             @id @default(cuid())
+  userId      String
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  clockIn     DateTime
+  clockOut    DateTime?
+  duration    Int?               // in minutes, calculated when clocked out
+  description String?
+  status      ClockSessionStatus @default(ACTIVE)
+  timeZone    String             @default("Asia/Kathmandu")
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([userId, clockIn])
+  @@index([userId, status])
+  @@map("clock_sessions")
+}
+
+model LeaveType {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  color           String   @default("#0ea5e9")
+  icon            String?  // emoji or icon name
+  isActive        Boolean  @default(true)
+  carryoverAllowed Boolean @default(false)
+  maxCarryoverDays Int?    // null = unlimited
+  carryoverExpiryMonths Int? // months after which carryover expires
+  requiresApproval Boolean @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  leaveBalances   LeaveBalance[]
+  leaveRequests   LeaveRequest[]
+
+  @@map("leave_types")
+}
+
+model LeaveBalance {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leaveTypeId   String
+  leaveType     LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  year          Int
+  allocatedDays Float    @default(0)
+  usedDays      Float    @default(0)
+  carriedOverDays Float @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, leaveTypeId, year])
+  @@map("leave_balances")
+}
+
+model LeaveRequest {
+  id            String             @id @default(cuid())
+  userId        String
+  user          User               @relation("LeaveRequestUser", fields: [userId], references: [id], onDelete: Cascade)
+  leaveTypeId   String
+  leaveType     LeaveType          @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  startDate     DateTime           @db.Date
+  endDate       DateTime           @db.Date
+  totalDays     Float
+  reason        String?
+  status        LeaveRequestStatus @default(PENDING)
+  approvedById  String?
+  approvedBy    User?              @relation("LeaveRequestApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt    DateTime?
+  rejectReason  String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([userId, status])
+  @@index([leaveTypeId])
+  @@index([startDate, endDate])
+  @@map("leave_requests")
+}
