@@ -9,8 +9,12 @@ export default async function DashboardLayout({
 }) {
   const session = await getSession()
   
-  if (!session || session.role === 'ADMIN') {
+  if (!session) {
     redirect('/login')
+  }
+  
+  if (session.role === 'ADMIN') {
+    redirect('/admin')
   }
 
   return (
