@@ -1,4 +1,5 @@
 import { prisma } from './prisma'
+import { Prisma } from '@prisma/client'
 
 export interface NotificationData {
   userId: string
@@ -18,7 +19,7 @@ export async function sendNotification(data: NotificationData) {
         title: data.title,
         message: data.message,
         senderId: data.senderId,
-        metadata: data.metadata,
+        metadata: data.metadata as Prisma.InputJsonValue | undefined,
       },
     })
   } catch (error) {

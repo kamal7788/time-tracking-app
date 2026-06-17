@@ -42,7 +42,7 @@ export default function LeaveTypesManager({ leaveTypes }: LeaveTypesManagerProps
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({
+  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<z.infer<typeof leaveTypeSchema>>({
     resolver: zodResolver(leaveTypeSchema),
     defaultValues: {
       color: '#0ea5e9',

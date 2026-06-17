@@ -40,11 +40,11 @@ export default function ClientsProjectsManager({ clients }: ClientsProjectsManag
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  const { register: regClient, handleSubmit: submitClient, reset: resetClient, formState: { errors: clientErrors, isSubmitting: clientSubmitting } } = useForm({
+  const { register: regClient, handleSubmit: submitClient, reset: resetClient, formState: { errors: clientErrors, isSubmitting: clientSubmitting } } = useForm<z.infer<typeof clientSchema>>({
     resolver: zodResolver(clientSchema),
   })
 
-  const { register: regProject, handleSubmit: submitProject, reset: resetProject, formState: { errors: projectErrors, isSubmitting: projectSubmitting } } = useForm({
+  const { register: regProject, handleSubmit: submitProject, reset: resetProject, formState: { errors: projectErrors, isSubmitting: projectSubmitting } } = useForm<z.infer<typeof projectSchema>>({
     resolver: zodResolver(projectSchema),
   })
 

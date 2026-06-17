@@ -72,7 +72,6 @@ export default function LoginPage() {
               <label htmlFor="email" className="label">Email address</label>
               <input
                 id="email"
-                name="email"
                 type="email"
                 autoComplete="email"
                 className="input"
@@ -88,7 +87,6 @@ export default function LoginPage() {
               <label htmlFor="password" className="label">Password</label>
               <input
                 id="password"
-                name="password"
                 type="password"
                 autoComplete="current-password"
                 className="input"

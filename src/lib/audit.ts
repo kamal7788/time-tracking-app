@@ -1,5 +1,6 @@
 import { prisma } from './prisma'
 import { headers } from 'next/headers'
+import { Prisma } from '@prisma/client'
 
 export interface AuditLogData {
   userId: string
@@ -18,7 +19,12 @@ export async function createAuditLog(data: AuditLogData) {
 
     await prisma.auditLog.create({
       data: {
-        ...data,
+        userId: data.userId,
+        action: data.action,
+        entity: data.entity,
+        entityId: data.entityId,
+        oldData: data.oldData as Prisma.InputJsonValue | undefined,
+        newData: data.newData as Prisma.InputJsonValue | undefined,
         ipAddress,
         userAgent,
       },

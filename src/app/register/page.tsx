@@ -74,7 +74,6 @@ export default function RegisterPage() {
               <label htmlFor="name" className="label">Full name</label>
               <input
                 id="name"
-                name="name"
                 type="text"
                 autoComplete="name"
                 className="input"
@@ -90,7 +89,6 @@ export default function RegisterPage() {
               <label htmlFor="email" className="label">Email address</label>
               <input
                 id="email"
-                name="email"
                 type="email"
                 autoComplete="email"
                 className="input"
@@ -106,7 +104,6 @@ export default function RegisterPage() {
               <label htmlFor="password" className="label">Password</label>
               <input
                 id="password"
-                name="password"
                 type="password"
                 autoComplete="new-password"
                 className="input"
@@ -122,7 +119,6 @@ export default function RegisterPage() {
               <label htmlFor="confirmPassword" className="label">Confirm password</label>
               <input
                 id="confirmPassword"
-                name="confirmPassword"
                 type="password"
                 autoComplete="new-password"
                 className="input"

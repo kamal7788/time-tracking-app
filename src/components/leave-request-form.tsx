@@ -33,7 +33,7 @@ export default function LeaveRequestForm({ leaveTypes }: LeaveRequestFormProps) 
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  const { register, handleSubmit, watch, reset, formState: { errors } } = useForm({
+  const { register, handleSubmit, watch, reset, formState: { errors } } = useForm<z.infer<typeof leaveRequestSchema>>({
     resolver: zodResolver(leaveRequestSchema),
   })
 
