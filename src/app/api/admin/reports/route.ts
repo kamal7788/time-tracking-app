@@ -119,8 +119,8 @@ export async function GET(request: NextRequest) {
     const report = {
       summary: {
         totalEntries: timeEntries.length,
-        totalMinutes: timeEntries.reduce((sum, e) => sum + e.duration, 0),
-        totalHours: timeEntries.reduce((sum, e) => sum + e.duration, 0) / 60,
+        totalMinutes: timeEntries.reduce((sum: number, e: { duration: number }) => sum + e.duration, 0),
+        totalHours: timeEntries.reduce((sum: number, e: { duration: number }) => sum + e.duration, 0) / 60,
         uniqueUsers: userStats.size,
         uniqueProjects: projectStats.size,
         dateRange: { start: startDate, end: endDate },
@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
           formatted: formatDuration(u.minutes),
         })),
       })),
-      rawEntries: timeEntries.map(e => ({
+      rawEntries: timeEntries.map((e: any) => ({
         id: e.id,
         user: e.user.name,
         userEmail: e.user.email,

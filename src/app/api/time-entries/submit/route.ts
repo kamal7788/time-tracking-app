@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user has logged break for each day
-    const daysWithEntries = new Set(draftEntries.map(e => e.date.toISOString().split('T')[0]))
+    const daysWithEntries = new Set(draftEntries.map((e: any) => e.date.toISOString().split('T')[0]))
 
     // Verify break entries exist for each day with work
     const breakProject = await prisma.project.findFirst({
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
 
     if (breakProject) {
       for (const day of daysWithEntries) {
-        const hasBreak = draftEntries.some(e => 
+        const hasBreak = draftEntries.some((e: any) => 
           e.projectId === breakProject.id && 
           e.date.toISOString().split('T')[0] === day
         )

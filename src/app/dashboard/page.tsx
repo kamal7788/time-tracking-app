@@ -54,10 +54,10 @@ export default async function DashboardPage() {
   }
 
   // Calculate totals
-  const totalMinutes = timeEntries.reduce((sum, e) => sum + e.duration, 0)
+  const totalMinutes = timeEntries.reduce((sum: number, e: { duration: number }) => sum + e.duration, 0)
   const dayTotals = new Map<string, number>()
   for (const [day, entries] of entriesByDay) {
-    dayTotals.set(day, entries.reduce((sum, e) => sum + e.duration, 0))
+    dayTotals.set(day, entries.reduce((sum: number, e: { duration: number }) => sum + e.duration, 0))
   }
 
   const weekDates = getWeekDates()
