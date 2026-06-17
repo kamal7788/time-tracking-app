@@ -77,6 +77,8 @@ export default async function TimeEntriesPage() {
         clockSessions={clockSessions}
         projects={projects}
         commonWorks={commonWorks}
+        weekStart={weekStart.toISOString()}
+        weekEnd={weekEnd.toISOString()}
       />
     </div>
   )

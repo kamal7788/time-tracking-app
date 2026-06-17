@@ -6,13 +6,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatDate(date: Date | string, formatStr: string = 'PPP'): string {
+export function formatDate(date: Date | string | null | undefined, formatStr: string = 'PPP'): string {
+  if (!date) return ''
   const d = typeof date === 'string' ? new Date(date) : date
+  if (isNaN(d.getTime())) return ''
   return format(d, formatStr)
 }
 
-export function formatTime(date: Date | string): string {
+export function formatTime(date: Date | string | null | undefined): string {
+  if (!date) return ''
   const d = typeof date === 'string' ? new Date(date) : date
+  if (isNaN(d.getTime())) return ''
   return d.toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',

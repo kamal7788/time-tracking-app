@@ -29,11 +29,16 @@ interface TimeEntriesListProps {
   clockSessions: ClockSession[]
   projects: Array<{ id: string; name: string; client: { name: string } }>
   commonWorks: Array<{ id: string; name: string; projectId: string; project: { name: string; client: { name: string } } }>
+  weekStart: string
+  weekEnd: string
 }
 
-export default function TimeEntriesList({ timeEntries, clockSessions, projects, commonWorks }: TimeEntriesListProps) {
+export default function TimeEntriesList({ timeEntries, clockSessions, projects, commonWorks, weekStart, weekEnd }: TimeEntriesListProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'entries' | 'clocks'>('entries')
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+  const [submitSuccess, setSubmitSuccess] = useState('')
 
   const groupedByDate = timeEntries.reduce((acc, entry) => {
     const dateKey = entry.date.toString().split('T')[0]
@@ -61,6 +66,27 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
     }
   }
 
+  const handleSubmitWeek = async () => {
+    setSubmitting(true)
+    setSubmitError('')
+    setSubmitSuccess('')
+    try {
+      const res = await fetch('/api/time-entries/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startDate: weekStart, endDate: weekEnd }),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error)
+      setSubmitSuccess(`Submitted ${result.submittedCount} entries for approval`)
+      setTimeout(() => window.location.reload(), 1500)
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Failed to submit')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const handleStatusUpdate = async (ids: string[], action: 'approve' | 'reject') => {
     const reason = action === 'reject' ? prompt('Reason for rejection:') : undefined
     if (action === 'reject' && !reason) return
@@ -79,30 +105,44 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
 
   return (
     <div className="space-y-4">
-      {/* Tab navigation */}
-      <div className="flex gap-2 border-b">
+      {submitSuccess && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">{submitSuccess}</div>
+      )}
+      {submitError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{submitError}</div>
+      )}
+
+      <div className="flex items-center justify-between">
+        <div className="flex gap-2 border-b flex-1">
+          <button
+            onClick={() => setActiveTab('entries')}
+            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === 'entries' 
+                ? 'border-primary-500 text-primary-600' 
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Manual Entries ({timeEntries.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('clocks')}
+            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === 'clocks' 
+                ? 'border-primary-500 text-primary-600' 
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Clock In/Out Sessions ({clockSessions.length})
+          </button>
+        </div>
         <button
-          onClick={() => setActiveTab('entries')}
-          className={`px-4 py-2 font-medium border-b-2 transition-colors ${
-            activeTab === 'entries' 
-              ? 'border-primary-500 text-primary-600' 
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
+          onClick={handleSubmitWeek}
+          disabled={submitting}
+          className="btn-primary ml-4 whitespace-nowrap"
         >
-          Manual Entries ({timeEntries.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('clocks')}
-          className={`px-4 py-2 font-medium border-b-2 transition-colors ${
-            activeTab === 'clocks' 
-              ? 'border-primary-500 text-primary-600' 
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Clock In/Out Sessions ({clockSessions.length})
+          {submitting ? 'Submitting...' : 'Submit Week'}
         </button>
       </div>
-
       {/* Manual Entries */}
       {activeTab === 'entries' && (
         <div className="space-y-6">
