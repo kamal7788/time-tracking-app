@@ -44,7 +44,7 @@ RUN chown nextjs:nodejs .next
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Install prisma CLI and tsx at runtime (needed by docker-entrypoint.sh)
+# Install prisma CLI and tsx for runtime db push and seed
 RUN npm install prisma@6.19.3 tsx
 
 USER nextjs
