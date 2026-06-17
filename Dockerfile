@@ -1,4 +1,5 @@
 FROM node:20-alpine AS base
+RUN apk add --no-cache icu-data-full
 
 # Install dependencies only when needed
 FROM base AS deps
