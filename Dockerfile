@@ -16,7 +16,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Generate Prisma Client
-RUN npx prisma generate
+RUN ./node_modules/.bin/prisma generate
 
 # Build the application
 RUN npm run build
@@ -43,6 +43,9 @@ RUN chown nextjs:nodejs .next
 
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Install prisma CLI and tsx at runtime (needed by docker-entrypoint.sh)
+RUN npm install prisma@6.19.3 tsx
 
 USER nextjs
 
