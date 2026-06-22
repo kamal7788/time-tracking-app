@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { formatTime, formatDuration, formatDate } from '@/lib/utils'
+import { useState, useEffect } from 'react'
+import { formatTime, formatDuration, formatDate, timeStringToMinutes } from '@/lib/utils'
 
 interface TimeEntry {
   id: string
@@ -12,6 +12,7 @@ interface TimeEntry {
   description: string | null
   status: string
   project: { name: string; client: { name: string } }
+  projectId: string
 }
 
 interface ClockSession {
@@ -34,11 +35,32 @@ interface TimeEntriesListProps {
 }
 
 export default function TimeEntriesList({ timeEntries, clockSessions, projects, commonWorks, weekStart, weekEnd }: TimeEntriesListProps) {
-  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
   const [activeTab, setActiveTab] = useState<'entries' | 'clocks'>('entries')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const [submitSuccess, setSubmitSuccess] = useState('')
+
+  // Edit form state
+  const [editProjectId, setEditProjectId] = useState('')
+  const [editDate, setEditDate] = useState('')
+  const [editStartTime, setEditStartTime] = useState('')
+  const [editEndTime, setEditEndTime] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editError, setEditError] = useState('')
+  const [editSubmitting, setEditSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (editingEntry) {
+      setEditProjectId(editingEntry.projectId)
+      const d = new Date(editingEntry.date)
+      setEditDate(d.toISOString().split('T')[0])
+      setEditStartTime(formatTime(editingEntry.startTime))
+      setEditEndTime(formatTime(editingEntry.endTime))
+      setEditDescription(editingEntry.description || '')
+      setEditError('')
+    }
+  }, [editingEntry])
 
   const groupedByDate = timeEntries.reduce((acc, entry) => {
     const dateKey = entry.date.toString().split('T')[0]
@@ -63,6 +85,59 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
       if (res.ok) window.location.reload()
     } catch (error) {
       alert('Failed to delete entry')
+    }
+  }
+
+  const checkOverlap = (startTime: string, endTime: string, date: string, excludeId?: string): string | null => {
+    const newStart = timeStringToMinutes(startTime)
+    const newEnd = timeStringToMinutes(endTime)
+    for (const entry of timeEntries) {
+      if (excludeId && entry.id === excludeId) continue
+      const entryDate = new Date(entry.date).toISOString().split('T')[0]
+      if (entryDate !== date) continue
+      if (entry.status === 'REJECTED') continue
+      const existStart = timeStringToMinutes(formatTime(entry.startTime))
+      const existEnd = timeStringToMinutes(formatTime(entry.endTime))
+      if (newStart < existEnd && existStart < newEnd) {
+        return `Overlaps with ${formatTime(entry.startTime)} - ${formatTime(entry.endTime)} (${entry.project.client.name} - ${entry.project.name})`
+      }
+    }
+    return null
+  }
+
+  const handleEditSubmit = async () => {
+    if (!editingEntry) return
+    setEditError('')
+    if (!editProjectId || !editDate || !editStartTime || !editEndTime) {
+      setEditError('All fields are required')
+      return
+    }
+    const overlap = checkOverlap(editStartTime, editEndTime, editDate, editingEntry.id)
+    if (overlap) {
+      setEditError(overlap)
+      return
+    }
+    setEditSubmitting(true)
+    try {
+      const res = await fetch(`/api/time-entries/${editingEntry.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: editProjectId,
+          date: editDate,
+          startTime: editStartTime,
+          endTime: editEndTime,
+          description: editDescription || undefined,
+        }),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error)
+      setEditingEntry(null)
+      window.location.reload()
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : 'Failed to update entry')
+    } finally {
+      setEditSubmitting(false)
     }
   }
 
@@ -196,7 +271,7 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
                           {entry.status === 'DRAFT' && (
                             <div className="flex gap-2">
                               <button
-                                onClick={() => setEditingId(entry.id)}
+                                onClick={() => setEditingEntry(entry)}
                                 className="text-gray-400 hover:text-gray-600"
                               >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -274,6 +349,74 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editingEntry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold">Edit Time Entry</h3>
+              <button onClick={() => setEditingEntry(null)} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              {editError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{editError}</div>
+              )}
+              <div>
+                <label className="label">Project <span className="text-red-500">*</span></label>
+                <select value={editProjectId} onChange={(e) => setEditProjectId(e.target.value)} className="input">
+                  <option value="">Select project...</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.client.name} - {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Date <span className="text-red-500">*</span></label>
+                  <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="input" />
+                </div>
+                <div>
+                  <label className="label">Start Time <span className="text-red-500">*</span></label>
+                  <input type="time" value={editStartTime} onChange={(e) => setEditStartTime(e.target.value)} className="input" step={900} />
+                </div>
+                <div>
+                  <label className="label">End Time <span className="text-red-500">*</span></label>
+                  <input type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)} className="input" step={900} />
+                </div>
+              </div>
+              <div>
+                <label className="label">Description</label>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  rows={2}
+                  className="input"
+                  placeholder="What did you work on?"
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setEditingEntry(null)} className="btn-outline flex-1">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleEditSubmit}
+                  disabled={editSubmitting}
+                  className="btn-primary flex-1"
+                >
+                  {editSubmitting ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -24,6 +24,7 @@ interface QuickAddTimeEntryProps {
 export default function QuickAddTimeEntry({ projects, commonWorks }: QuickAddTimeEntryProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [selectedCommonWork, setSelectedCommonWork] = useState<string>('')
+  const [formError, setFormError] = useState('')
 
   const { register, handleSubmit, setValue, reset, formState: { errors, isSubmitting } } = useForm<TimeEntryInput>({
     resolver: zodResolver(timeEntrySchema),
@@ -35,6 +36,7 @@ export default function QuickAddTimeEntry({ projects, commonWorks }: QuickAddTim
   })
 
   const onSubmit = async (data: TimeEntryInput) => {
+    setFormError('')
     try {
       const res = await fetch('/api/time-entries', {
         method: 'POST',
@@ -47,7 +49,7 @@ export default function QuickAddTimeEntry({ projects, commonWorks }: QuickAddTim
       setIsOpen(false)
       window.location.reload()
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to add time entry')
+      setFormError(error instanceof Error ? error.message : 'Failed to add time entry')
     }
   }
 
@@ -63,12 +65,10 @@ export default function QuickAddTimeEntry({ projects, commonWorks }: QuickAddTim
     }
   }
 
-  const today = new Date().toISOString().split('T')[0]
-
   return (
     <>
       <button
-        onClick={() => setIsOpen(true)}
+        onClick={() => { setIsOpen(true); setFormError('') }}
         className="btn-primary"
       >
         <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -90,6 +90,9 @@ export default function QuickAddTimeEntry({ projects, commonWorks }: QuickAddTim
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="p-4 space-y-4">
+              {formError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{formError}</div>
+              )}
               {commonWorks.length > 0 && (
                 <div className="border-b pb-4">
                   <label className="label">Quick Add from Common Works</label>
@@ -132,7 +135,7 @@ export default function QuickAddTimeEntry({ projects, commonWorks }: QuickAddTim
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Date <span className="text-red-500">*</span></label>
-                  <input type="date" {...register('date')} max={today} className="input" />
+                  <input type="date" {...register('date')} className="input" />
                   {errors.date && <p className="text-sm text-red-600 mt-1">{errors.date.message}</p>}
                 </div>
                 <div>
@@ -153,7 +156,7 @@ export default function QuickAddTimeEntry({ projects, commonWorks }: QuickAddTim
               </div>
 
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setIsOpen(false)} className="btn-outline flex-1">
+                <button type="button" onClick={() => { setIsOpen(false); setFormError('') }} className="btn-outline flex-1">
                   Cancel
                 </button>
                 <button type="submit" disabled={isSubmitting} className="btn-primary flex-1">

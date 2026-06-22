@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getSession, requireAuth } from '@/lib/auth'
 import { timeEntrySchema } from '@/lib/validations'
 import { createAuditLog, AuditActions, AuditEntities } from '@/lib/audit'
-import { calculateDuration } from '@/lib/utils'
+import { calculateDuration, timeStringToMinutes, formatTime } from '@/lib/utils'
 
 export async function GET(request: NextRequest) {
   try {
@@ -68,6 +68,31 @@ export async function POST(request: NextRequest) {
     const validated = timeEntrySchema.parse(body)
 
     const duration = calculateDuration(validated.startTime, validated.endTime)
+
+    // Check for overlapping entries on the same date
+    const entryDate = new Date(validated.date)
+    const newStartMinutes = timeStringToMinutes(validated.startTime)
+    const newEndMinutes = timeStringToMinutes(validated.endTime)
+
+    const existingEntries = await prisma.timeEntry.findMany({
+      where: {
+        userId: session.userId,
+        date: entryDate,
+        status: { not: 'REJECTED' },
+      },
+    })
+
+    for (const existing of existingEntries) {
+      const existStartMinutes = timeStringToMinutes(formatTime(existing.startTime))
+      const existEndMinutes = timeStringToMinutes(formatTime(existing.endTime))
+      
+      if (newStartMinutes < existEndMinutes && existStartMinutes < newEndMinutes) {
+        return NextResponse.json(
+          { error: `Time entry overlaps with existing entry from ${formatTime(existing.startTime)} to ${formatTime(existing.endTime)}` },
+          { status: 400 }
+        )
+      }
+    }
 
     const timeEntry = await prisma.timeEntry.create({
       data: {
