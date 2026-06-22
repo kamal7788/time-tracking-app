@@ -14,10 +14,12 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <AdminNav />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {children}
+    <div className="min-h-screen bg-brand-surface">
+      <AdminNav userName={session.email} />
+      <main className="lg:pl-72 transition-all duration-300">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {children}
+        </div>
       </main>
     </div>
   )

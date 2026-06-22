@@ -41,7 +41,6 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
   const [submitError, setSubmitError] = useState('')
   const [submitSuccess, setSubmitSuccess] = useState('')
 
-  // Edit form state
   const [editProjectId, setEditProjectId] = useState('')
   const [editDate, setEditDate] = useState('')
   const [editStartTime, setEditStartTime] = useState('')
@@ -165,7 +164,6 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
   const handleStatusUpdate = async (ids: string[], action: 'approve' | 'reject') => {
     const reason = action === 'reject' ? prompt('Reason for rejection:') : undefined
     if (action === 'reject' && !reason) return
-
     try {
       const res = await fetch('/api/admin/time-entries', {
         method: 'POST',
@@ -178,111 +176,148 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
     }
   }
 
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'APPROVED': return 'badge-approved'
+      case 'REJECTED': return 'badge-rejected'
+      case 'SUBMITTED': return 'badge-submitted'
+      default: return 'badge-draft'
+    }
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Alerts */}
       {submitSuccess && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">{submitSuccess}</div>
+        <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 text-emerald-700 px-5 py-3.5 rounded-2xl animate-slide-up">
+          <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="font-medium">{submitSuccess}</span>
+        </div>
       )}
       {submitError && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{submitError}</div>
+        <div className="flex items-center gap-3 bg-red-50 border border-red-200 text-red-600 px-5 py-3.5 rounded-2xl animate-slide-up">
+          <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="font-medium">{submitError}</span>
+        </div>
       )}
 
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2 border-b flex-1">
+      {/* Tabs + Submit */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex gap-1 p-1 bg-brand-surface rounded-xl">
           <button
             onClick={() => setActiveTab('entries')}
-            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+            className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
               activeTab === 'entries' 
-                ? 'border-primary-500 text-primary-600' 
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                ? 'bg-white text-brand-navy shadow-soft' 
+                : 'text-brand-gray hover:text-brand-navy'
             }`}
           >
             Manual Entries ({timeEntries.length})
           </button>
           <button
             onClick={() => setActiveTab('clocks')}
-            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+            className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
               activeTab === 'clocks' 
-                ? 'border-primary-500 text-primary-600' 
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                ? 'bg-white text-brand-navy shadow-soft' 
+                : 'text-brand-gray hover:text-brand-navy'
             }`}
           >
-            Clock In/Out Sessions ({clockSessions.length})
+            Clock Sessions ({clockSessions.length})
           </button>
         </div>
         <button
           onClick={handleSubmitWeek}
           disabled={submitting}
-          className="btn-primary ml-4 whitespace-nowrap"
+          className="btn-primary"
         >
+          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+          </svg>
           {submitting ? 'Submitting...' : 'Submit Week'}
         </button>
       </div>
+
       {/* Manual Entries */}
       {activeTab === 'entries' && (
         <div className="space-y-6">
           {Object.entries(groupedByDate).length === 0 ? (
             <div className="card">
-              <div className="card-body text-center py-12">
-                <p className="text-gray-500">No time entries for this week</p>
+              <div className="card-body text-center py-16">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-brand-blue/10 flex items-center justify-center mb-4">
+                  <svg className="w-7 h-7 text-brand-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                </div>
+                <p className="text-brand-gray font-medium">No time entries for this week</p>
+                <p className="text-brand-gray-light text-sm mt-1">Add your first entry to get started</p>
               </div>
             </div>
           ) : (
             Object.entries(groupedByDate).map(([date, entries]) => (
-              <div key={date} className="card">
+              <div key={date} className="card animate-slide-up">
                 <div className="card-header flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold text-gray-900">{formatDate(date)}</h3>
-                    <p className="text-sm text-gray-500">{entries.length} entries</p>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-brand-blue/10 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-brand-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-brand-navy">{formatDate(date)}</h3>
+                      <p className="text-xs text-brand-gray">{entries.length} {entries.length === 1 ? 'entry' : 'entries'}</p>
+                    </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-lg font-bold text-primary-600">{formatDuration(dailyTotal(entries))}</p>
-                    <p className="text-xs text-gray-500">Daily Total</p>
+                    <p className="text-xl font-bold text-brand-blue">{formatDuration(dailyTotal(entries))}</p>
+                    <p className="text-xs text-brand-gray">Daily Total</p>
                   </div>
                 </div>
-                <div className="divide-y">
+                <div className="divide-y divide-gray-100">
                   {entries.map((entry) => (
-                    <div key={entry.id} className="p-4 hover:bg-gray-50 transition-colors">
+                    <div key={entry.id} className="px-6 py-4 hover:bg-brand-surface/30 transition-colors group">
                       <div className="flex items-center justify-between">
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-3">
+                            <div className="w-1 h-10 rounded-full bg-brand-blue/30" />
                             <div>
-                              <p className="font-medium text-gray-900">
+                              <p className="font-semibold text-brand-navy">
                                 {formatTime(entry.startTime)} - {formatTime(entry.endTime)}
                               </p>
-                              <p className="text-sm text-gray-600">
-                                {entry.project.client.name} - {entry.project.name}
+                              <p className="text-sm text-brand-gray">
+                                {entry.project.client.name} <span className="text-brand-gray-light">/</span> {entry.project.name}
                               </p>
                             </div>
                           </div>
                           {entry.description && (
-                            <p className="text-sm text-gray-500 mt-1">{entry.description}</p>
+                            <p className="text-sm text-brand-gray-light mt-1.5 ml-4">{entry.description}</p>
                           )}
                         </div>
                         <div className="flex items-center gap-4">
-                          <span className="font-semibold text-primary-600">{formatDuration(entry.duration)}</span>
-                          <span className={`badge ${
-                            entry.status === 'APPROVED' ? 'badge-approved' :
-                            entry.status === 'REJECTED' ? 'badge-rejected' :
-                            entry.status === 'SUBMITTED' ? 'badge-submitted' : 'badge-draft'
-                          }`}>
+                          <span className="text-lg font-bold text-brand-blue">{formatDuration(entry.duration)}</span>
+                          <span className={getStatusBadge(entry.status)}>
                             {entry.status}
                           </span>
                           {entry.status === 'DRAFT' && (
-                            <div className="flex gap-2">
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
                                 onClick={() => setEditingEntry(entry)}
-                                className="text-gray-400 hover:text-gray-600"
+                                className="p-2 rounded-xl text-brand-gray hover:text-brand-blue hover:bg-brand-blue/10 transition-all"
+                                title="Edit"
                               >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                 </svg>
                               </button>
                               <button
                                 onClick={() => handleDelete(entry.id)}
-                                className="text-gray-400 hover:text-red-600"
+                                className="p-2 rounded-xl text-brand-gray hover:text-red-500 hover:bg-red-50 transition-all"
+                                title="Delete"
                               >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                 </svg>
                               </button>
@@ -304,41 +339,46 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
         <div className="space-y-6">
           {Object.entries(clockSessionsByDate).length === 0 ? (
             <div className="card">
-              <div className="card-body text-center py-12">
-                <p className="text-gray-500">No clock sessions for this week</p>
+              <div className="card-body text-center py-16">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-brand-blue/10 flex items-center justify-center mb-4">
+                  <svg className="w-7 h-7 text-brand-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-brand-gray font-medium">No clock sessions for this week</p>
               </div>
             </div>
           ) : (
             Object.entries(clockSessionsByDate).map(([date, sessions]) => (
-              <div key={date} className="card">
+              <div key={date} className="card animate-slide-up">
                 <div className="card-header">
-                  <h3 className="font-semibold text-gray-900">{formatDate(date)}</h3>
+                  <h3 className="font-bold text-brand-navy">{formatDate(date)}</h3>
                 </div>
-                <div className="divide-y">
+                <div className="divide-y divide-gray-100">
                   {sessions.map((session) => (
-                    <div key={session.id} className="p-4">
+                    <div key={session.id} className="px-6 py-4">
                       <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium text-gray-900">
-                            {formatTime(session.clockIn)} - {session.clockOut ? formatTime(session.clockOut) : 'Active'}
-                          </p>
-                          {session.project && (
-                            <p className="text-sm text-gray-600">
-                              {session.project.client.name} - {session.project.name}
+                        <div className="flex items-center gap-3">
+                          <div className={`w-1 h-10 rounded-full ${session.status === 'ACTIVE' ? 'bg-emerald-400' : 'bg-gray-200'}`} />
+                          <div>
+                            <p className="font-semibold text-brand-navy">
+                              {formatTime(session.clockIn)} - {session.clockOut ? formatTime(session.clockOut) : 'Active'}
                             </p>
-                          )}
-                          {session.description && (
-                            <p className="text-sm text-gray-500 mt-1">{session.description}</p>
-                          )}
+                            {session.project && (
+                              <p className="text-sm text-brand-gray">
+                                {session.project.client.name} <span className="text-brand-gray-light">/</span> {session.project.name}
+                              </p>
+                            )}
+                            {session.description && (
+                              <p className="text-sm text-brand-gray-light mt-1">{session.description}</p>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <span className="font-semibold text-primary-600">
+                        <div className="flex items-center gap-3">
+                          <span className="text-lg font-bold text-brand-blue">
                             {session.duration ? formatDuration(session.duration) : 'In Progress'}
                           </span>
-                          <span className={`ml-2 badge ${
-                            session.status === 'COMPLETED' ? 'badge-approved' :
-                            session.status === 'CANCELLED' ? 'badge-rejected' : 'badge-submitted'
-                          }`}>
+                          <span className={getStatusBadge(session.status === 'COMPLETED' ? 'APPROVED' : session.status === 'ACTIVE' ? 'SUBMITTED' : 'REJECTED')}>
                             {session.status}
                           </span>
                         </div>
@@ -354,22 +394,30 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
 
       {/* Edit Modal */}
       {editingEntry && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-semibold">Edit Time Entry</h3>
-              <button onClick={() => setEditingEntry(null)} className="text-gray-400 hover:text-gray-600">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-navy/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-lifted max-w-md w-full max-h-[90vh] overflow-y-auto animate-slide-up">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+              <div>
+                <h3 className="text-lg font-bold text-brand-navy">Edit Time Entry</h3>
+                <p className="text-sm text-brand-gray mt-0.5">Update entry details below</p>
+              </div>
+              <button onClick={() => setEditingEntry(null)} className="p-2 rounded-xl text-brand-gray hover:text-brand-navy hover:bg-brand-surface transition-all">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
-            <div className="p-4 space-y-4">
+            <div className="p-6 space-y-5">
               {editError && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{editError}</div>
+                <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm font-medium">
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {editError}
+                </div>
               )}
               <div>
-                <label className="label">Project <span className="text-red-500">*</span></label>
+                <label className="label">Project</label>
                 <select value={editProjectId} onChange={(e) => setEditProjectId(e.target.value)} className="input">
                   <option value="">Select project...</option>
                   {projects.map((p) => (
@@ -379,17 +427,17 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
                   ))}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="label">Date <span className="text-red-500">*</span></label>
+                  <label className="label">Date</label>
                   <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="input" />
                 </div>
                 <div>
-                  <label className="label">Start Time <span className="text-red-500">*</span></label>
+                  <label className="label">Start Time</label>
                   <input type="time" value={editStartTime} onChange={(e) => setEditStartTime(e.target.value)} className="input" step={900} />
                 </div>
                 <div>
-                  <label className="label">End Time <span className="text-red-500">*</span></label>
+                  <label className="label">End Time</label>
                   <input type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)} className="input" step={900} />
                 </div>
               </div>

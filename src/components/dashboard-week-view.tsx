@@ -23,77 +23,92 @@ interface DashboardWeekViewProps {
 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 export default function DashboardWeekView({ weekDates, entriesByDay, dayTotals }: DashboardWeekViewProps) {
-  const getStatusBadge = (status: string) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
-      case 'DRAFT': return 'badge-draft'
-      case 'SUBMITTED': return 'badge-submitted'
-      case 'APPROVED': return 'badge-approved'
-      case 'REJECTED': return 'badge-rejected'
-      default: return 'badge-draft'
+      case 'DRAFT': return 'bg-gray-100 text-gray-600'
+      case 'SUBMITTED': return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+      case 'APPROVED': return 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+      case 'REJECTED': return 'bg-red-50 text-red-600 ring-1 ring-red-200'
+      default: return 'bg-gray-100 text-gray-600'
     }
   }
 
+  const today = new Date().toISOString().split('T')[0]
+
   return (
     <div className="card">
-      <div className="card-header">
-        <h2 className="text-lg font-semibold text-gray-900">Weekly Time Log</h2>
+      <div className="card-header flex items-center justify-between">
+        <h2 className="text-lg font-bold text-brand-navy">Weekly Time Log</h2>
+        <div className="flex items-center gap-2">
+          {['DRAFT', 'SUBMITTED', 'APPROVED'].map((status) => (
+            <span key={status} className={`text-xs font-medium px-2 py-1 rounded-lg ${getStatusColor(status)}`}>
+              {status}
+            </span>
+          ))}
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-gray-50">
-            <tr>
-              {weekDates.map((date, index) => (
-                <th
-                  key={date.toISOString()}
-                  className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
-                    index === 0 || index === 6 ? 'bg-gray-100' : ''
-                  }`}
-                >
-                  <div className="flex flex-col items-center">
-                    <span>{dayNames[date.getDay()]}</span>
-                    <span className="text-sm font-normal text-gray-900 mt-1">
-                      {date.getDate()}
-                    </span>
-                  </div>
-                </th>
-              ))}
+          <thead>
+            <tr className="table-header">
+              {weekDates.map((date) => {
+                const dateStr = date.toISOString().split('T')[0]
+                const isToday = dateStr === today
+                return (
+                  <th
+                    key={date.toISOString()}
+                    className="px-4 py-3 text-center"
+                  >
+                    <div className="flex flex-col items-center">
+                      <span className={`text-xs font-semibold ${isToday ? 'text-brand-blue' : 'text-brand-gray'}`}>
+                        {dayNames[date.getDay()]}
+                      </span>
+                      <span className={`text-lg font-bold mt-0.5 ${isToday ? 'text-brand-blue' : 'text-brand-navy'}`}>
+                        {date.getDate()}
+                      </span>
+                    </div>
+                  </th>
+                )
+              })}
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {/* Time slots rows - we'll show up to 5 entries per day */}
+          <tbody className="bg-white divide-y divide-gray-100">
             {Array.from({ length: 5 }, (_, rowIndex) => (
-              <tr key={rowIndex}>
-                {weekDates.map((date, colIndex) => {
+              <tr key={rowIndex} className="hover:bg-brand-surface/30 transition-colors">
+                {weekDates.map((date) => {
                   const dayKey = date.toISOString().split('T')[0]
                   const entries = entriesByDay.get(dayKey) || []
                   const entry = entries[rowIndex]
                   
                   return (
-                    <td key={dayKey} className={`px-4 py-2 ${rowIndex === 0 ? 'border-t' : ''} ${colIndex === 0 || colIndex === 6 ? 'bg-gray-50' : ''}`}>
+                    <td key={dayKey} className="px-3 py-2">
                       {entry ? (
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium text-gray-900">
-                              {formatTime(entry.startTime)} - {formatTime(entry.endTime)}
+                        <div className="p-2.5 rounded-xl bg-brand-surface/50 hover:bg-brand-surface transition-colors min-h-[80px]">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-xs font-bold text-brand-navy">
+                              {formatTime(entry.startTime)}
                             </span>
-                            <span className={`badge ${getStatusBadge(entry.status)}`}>
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${getStatusColor(entry.status)}`}>
                               {entry.status}
                             </span>
                           </div>
-                          <div className="text-xs text-gray-600 truncate">
-                            {entry.project.client.name} - {entry.project.name}
+                          <div className="text-xs text-brand-gray truncate font-medium">
+                            {entry.project.client.name}
+                          </div>
+                          <div className="text-xs text-brand-navy truncate font-semibold">
+                            {entry.project.name}
                           </div>
                           {entry.description && (
-                            <div className="text-xs text-gray-500 truncate">
+                            <div className="text-[10px] text-brand-gray-light truncate mt-1">
                               {entry.description}
                             </div>
                           )}
-                          <div className="text-xs font-medium text-primary-600">
+                          <div className="text-xs font-bold text-brand-blue mt-1.5">
                             {formatDuration(entry.duration)}
                           </div>
                         </div>
                       ) : (
-                        <div className="h-16" />
+                        <div className="h-20 rounded-xl border-2 border-dashed border-gray-100 hover:border-brand-blue/30 transition-colors" />
                       )}
                     </td>
                   )
@@ -101,13 +116,15 @@ export default function DashboardWeekView({ weekDates, entriesByDay, dayTotals }
               </tr>
             ))}
             {/* Daily total row */}
-            <tr className="bg-gray-50">
+            <tr className="bg-brand-surface/50">
               {weekDates.map((date) => {
                 const dayKey = date.toISOString().split('T')[0]
                 const total = dayTotals.get(dayKey) || 0
                 return (
-                  <td key={dayKey} className="px-4 py-2 font-medium text-gray-900 border-t">
-                    {total > 0 ? formatDuration(total) : '-'}
+                  <td key={dayKey} className="px-4 py-3 text-center border-t border-gray-100">
+                    <span className="text-sm font-bold text-brand-navy">
+                      {total > 0 ? formatDuration(total) : '—'}
+                    </span>
                   </td>
                 )
               })}
@@ -116,14 +133,15 @@ export default function DashboardWeekView({ weekDates, entriesByDay, dayTotals }
         </table>
       </div>
       
-      {/* Empty state */}
       {entriesByDay.size === 0 && (
-        <div className="card-body text-center py-12">
-          <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No time entries this week</h3>
-          <p className="mt-1 text-sm text-gray-500">Click "Add Time Entry" to log your hours</p>
+        <div className="card-body text-center py-16">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-brand-blue/10 flex items-center justify-center mb-4">
+            <svg className="w-8 h-8 text-brand-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-brand-navy">No time entries this week</h3>
+          <p className="text-brand-gray mt-1">Click &quot;Add Time Entry&quot; to log your hours</p>
         </div>
       )}
     </div>
