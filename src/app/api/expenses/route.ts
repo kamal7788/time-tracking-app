@@ -45,39 +45,31 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await requireAuth()
-    const formData = await request.json()
+    const formData = await request.formData()
 
-    // Handle both FormData (with file) and regular JSON
-    let validated
+    const itemName = formData.get('itemName') as string
+    const amount = parseFloat(formData.get('amount') as string)
+    const date = formData.get('date') as string
+    const description = (formData.get('description') as string) || null
+    const receipt = formData.get('receipt') as File | null
+
+    const validated = expenseSchema.parse({ itemName, amount, date, description })
+
     let receiptPath: string | null = null
 
-    if (formData instanceof FormData) {
-      // FormData handling for file uploads
-      const itemName = formData.get('itemName') as string
-      const amount = parseFloat(formData.get('amount') as string)
-      const date = formData.get('date') as string
-      const description = formData.get('description') as string | null
-      const receipt = formData.get('receipt') as File | null
+    // Handle file upload
+    if (receipt && receipt.size > 0) {
+      const uploadsDir = join(process.cwd(), 'public', 'uploads', 'expenses')
+      await mkdir(uploadsDir, { recursive: true })
 
-      validated = expenseSchema.parse({ itemName, amount, date, description })
+      const ext = receipt.name.split('.').pop() || 'jpg'
+      const filename = `${randomUUID()}.${ext}`
+      const filepath = join(uploadsDir, filename)
 
-      // Handle file upload
-      if (receipt && receipt.size > 0) {
-        const uploadsDir = join(process.cwd(), 'public', 'uploads', 'expenses')
-        await mkdir(uploadsDir, { recursive: true })
+      const bytes = await receipt.arrayBuffer()
+      await writeFile(filepath, Buffer.from(bytes))
 
-        const ext = receipt.name.split('.').pop() || 'jpg'
-        const filename = `${randomUUID()}.${ext}`
-        const filepath = join(uploadsDir, filename)
-
-        const bytes = await receipt.arrayBuffer()
-        await writeFile(filepath, Buffer.from(bytes))
-
-        receiptPath = `/uploads/expenses/${filename}`
-      }
-    } else {
-      // JSON handling (no file)
-      validated = expenseSchema.parse(formData)
+      receiptPath = `/uploads/expenses/${filename}`
     }
 
     const expense = await prisma.expense.create({
