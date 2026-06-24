@@ -272,7 +272,7 @@ export default function AdminExpensesList({ expenses, onExpenseUpdated }: AdminE
                       <div className="text-sm text-brand-gray truncate max-w-xs">{expense.description}</div>
                     )}
                   </td>
-                  <td className="px-4 py-3 font-bold text-brand-navy">${parseFloat(expense.amount.toString()).toFixed(2)}</td>
+                  <td className="px-4 py-3 font-bold text-brand-navy">NPR ${parseFloat(expense.amount.toString()).toFixed(2)}</td>
                   <td className="px-4 py-3 text-brand-gray">{formatDate(expense.date)}</td>
                   <td className="px-4 py-3">
                     <span className={getStatusBadge(expense.status)}>{expense.status}</span>

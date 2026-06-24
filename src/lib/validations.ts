@@ -96,7 +96,7 @@ export const expenseSchema = z.object({
   itemName: z.string().min(1, 'Item name is required').max(255),
   amount: z.number().positive('Amount must be positive').max(999999.99, 'Amount is too large'),
   date: z.string().min(1, 'Date is required'),
-  description: z.string().optional(),
+  description: z.string().min(1, 'Description is required'),
 })
 
 export const expenseApprovalSchema = z.object({

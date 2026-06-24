@@ -50,27 +50,29 @@ export async function POST(request: NextRequest) {
     const itemName = formData.get('itemName') as string
     const amount = parseFloat(formData.get('amount') as string)
     const date = formData.get('date') as string
-    const description = (formData.get('description') as string) || null
+    const description = formData.get('description') as string
     const receipt = formData.get('receipt') as File | null
 
     const validated = expenseSchema.parse({ itemName, amount, date, description })
 
-    let receiptPath: string | null = null
-
-    // Handle file upload
-    if (receipt && receipt.size > 0) {
-      const uploadsDir = join(process.cwd(), 'public', 'uploads', 'expenses')
-      await mkdir(uploadsDir, { recursive: true })
-
-      const ext = receipt.name.split('.').pop() || 'jpg'
-      const filename = `${randomUUID()}.${ext}`
-      const filepath = join(uploadsDir, filename)
-
-      const bytes = await receipt.arrayBuffer()
-      await writeFile(filepath, Buffer.from(bytes))
-
-      receiptPath = `/uploads/expenses/${filename}`
+    if (!receipt || receipt.size === 0) {
+      return NextResponse.json(
+        { error: 'Receipt image is required' },
+        { status: 400 }
+      )
     }
+
+    const uploadsDir = join(process.cwd(), 'public', 'uploads', 'expenses')
+    await mkdir(uploadsDir, { recursive: true })
+
+    const ext = receipt.name.split('.').pop() || 'jpg'
+    const filename = `${randomUUID()}.${ext}`
+    const filepath = join(uploadsDir, filename)
+
+    const bytes = await receipt.arrayBuffer()
+    await writeFile(filepath, Buffer.from(bytes))
+
+    const receiptPath = `/api/uploads/expenses/${filename}`
 
     const expense = await prisma.expense.create({
       data: {

@@ -71,46 +71,48 @@ export async function PUT(
       )
     }
 
-    const formData = await request.json()
-    let validated
+    const formData = await request.formData()
     let receiptPath = existingExpense.receiptPath
 
-    if (formData instanceof FormData) {
-      const itemName = formData.get('itemName') as string
-      const amount = parseFloat(formData.get('amount') as string)
-      const date = formData.get('date') as string
-      const description = formData.get('description') as string | null
-      const receipt = formData.get('receipt') as File | null
+    const itemName = formData.get('itemName') as string
+    const amount = parseFloat(formData.get('amount') as string)
+    const date = formData.get('date') as string
+    const description = formData.get('description') as string
+    const receipt = formData.get('receipt') as File | null
 
-      validated = expenseSchema.parse({ itemName, amount, date, description })
+    const validated = expenseSchema.parse({ itemName, amount, date, description })
 
-      // Handle new file upload
-      if (receipt && receipt.size > 0) {
-        // Delete old receipt if exists
-        if (existingExpense.receiptPath) {
-          const oldPath = join(process.cwd(), 'public', existingExpense.receiptPath)
-          try {
-            await unlink(oldPath)
-          } catch {
-            // File might not exist, ignore error
-          }
-        }
-
-        const uploadsDir = join(process.cwd(), 'public', 'uploads', 'expenses')
-        await mkdir(uploadsDir, { recursive: true })
-
-        const ext = receipt.name.split('.').pop() || 'jpg'
-        const filename = `${randomUUID()}.${ext}`
-        const filepath = join(uploadsDir, filename)
-
-        const bytes = await receipt.arrayBuffer()
-        await writeFile(filepath, Buffer.from(bytes))
-
-        receiptPath = `/uploads/expenses/${filename}`
-      }
-    } else {
-      validated = expenseSchema.parse(formData)
+    if (!receipt || receipt.size === 0) {
+      return NextResponse.json(
+        { error: 'Receipt image is required' },
+        { status: 400 }
+      )
     }
+
+    // Delete old receipt if exists
+    if (existingExpense.receiptPath) {
+      const oldFilename = existingExpense.receiptPath.split('/').pop()
+      if (oldFilename) {
+        const oldPath = join(process.cwd(), 'public', 'uploads', 'expenses', oldFilename)
+        try {
+          await unlink(oldPath)
+        } catch {
+          // File might not exist, ignore error
+        }
+      }
+    }
+
+    const uploadsDir = join(process.cwd(), 'public', 'uploads', 'expenses')
+    await mkdir(uploadsDir, { recursive: true })
+
+    const ext = receipt.name.split('.').pop() || 'jpg'
+    const filename = `${randomUUID()}.${ext}`
+    const filepath = join(uploadsDir, filename)
+
+    const bytes = await receipt.arrayBuffer()
+    await writeFile(filepath, Buffer.from(bytes))
+
+    receiptPath = `/api/uploads/expenses/${filename}`
 
     const expense = await prisma.expense.update({
       where: { id },
@@ -190,11 +192,14 @@ export async function DELETE(
 
     // Delete receipt file if exists
     if (existingExpense.receiptPath) {
-      const receiptPath = join(process.cwd(), 'public', existingExpense.receiptPath)
-      try {
-        await unlink(receiptPath)
-      } catch {
-        // File might not exist, ignore error
+      const filename = existingExpense.receiptPath.split('/').pop()
+      if (filename) {
+        const receiptPath = join(process.cwd(), 'public', 'uploads', 'expenses', filename)
+        try {
+          await unlink(receiptPath)
+        } catch {
+          // File might not exist, ignore error
+        }
       }
     }
 

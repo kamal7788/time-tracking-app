@@ -64,7 +64,7 @@ export async function POST(
         userId: admin.id,
         type: 'EXPENSE_SUBMITTED',
         title: 'New Expense Submission',
-        message: `${user?.name || user?.email} submitted an expense for ${expense.itemName} ($${expense.amount})`,
+        message: `${user?.name || user?.email} submitted an expense for ${expense.itemName} (NPR ${expense.amount})`,
         senderId: session.userId,
         metadata: { expenseId: expense.id, amount: expense.amount },
       })

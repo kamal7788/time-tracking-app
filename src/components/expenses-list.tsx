@@ -157,7 +157,7 @@ export default function ExpensesList({ expenses, onExpenseUpdated }: ExpensesLis
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="text-xl font-bold text-brand-navy">${parseFloat(expense.amount.toString()).toFixed(2)}</span>
+                    <span className="text-xl font-bold text-brand-navy">NPR ${parseFloat(expense.amount.toString()).toFixed(2)}</span>
                     <span className={getStatusBadge(expense.status)}>{expense.status}</span>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       {expense.receiptPath && (
@@ -223,7 +223,7 @@ export default function ExpensesList({ expenses, onExpenseUpdated }: ExpensesLis
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="text-xl font-bold text-brand-navy">${parseFloat(expense.amount.toString()).toFixed(2)}</span>
+                    <span className="text-xl font-bold text-brand-navy">NPR ${parseFloat(expense.amount.toString()).toFixed(2)}</span>
                     <span className={getStatusBadge(expense.status)}>{expense.status}</span>
                     {expense.receiptPath && (
                       <button
@@ -268,7 +268,7 @@ export default function ExpensesList({ expenses, onExpenseUpdated }: ExpensesLis
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="text-xl font-bold text-brand-navy">${parseFloat(expense.amount.toString()).toFixed(2)}</span>
+                    <span className="text-xl font-bold text-brand-navy">NPR ${parseFloat(expense.amount.toString()).toFixed(2)}</span>
                     <span className={getStatusBadge(expense.status)}>{expense.status}</span>
                     {expense.receiptPath && (
                       <button
@@ -316,7 +316,7 @@ export default function ExpensesList({ expenses, onExpenseUpdated }: ExpensesLis
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="text-xl font-bold text-brand-navy">${parseFloat(expense.amount.toString()).toFixed(2)}</span>
+                    <span className="text-xl font-bold text-brand-navy">NPR ${parseFloat(expense.amount.toString()).toFixed(2)}</span>
                     <span className={getStatusBadge(expense.status)}>{expense.status}</span>
                   </div>
                 </div>

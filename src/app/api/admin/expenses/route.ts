@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
         userId: expense.user.id,
         type: action === 'approve' ? 'EXPENSE_APPROVED' : 'EXPENSE_REJECTED',
         title: `Expense ${action === 'approve' ? 'Approved' : 'Rejected'}`,
-        message: `Your expense for ${expense.itemName} ($${expense.amount}) was ${action === 'approve' ? 'approved' : 'rejected'}${action === 'reject' && rejectReason ? `. Reason: ${rejectReason}` : ''}.`,
+        message: `Your expense for ${expense.itemName} (NPR ${expense.amount}) was ${action === 'approve' ? 'approved' : 'rejected'}${action === 'reject' && rejectReason ? `. Reason: ${rejectReason}` : ''}.`,
         senderId: session.userId,
         metadata: { expenseId: expense.id, action },
       })

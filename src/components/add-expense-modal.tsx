@@ -68,6 +68,16 @@ export default function AddExpenseModal({ isOpen, onClose, onExpenseAdded }: Add
       return
     }
 
+    if (!description.trim()) {
+      setError('Description is required')
+      return
+    }
+
+    if (!receipt) {
+      setError('Receipt image is required')
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
@@ -150,7 +160,7 @@ export default function AddExpenseModal({ isOpen, onClose, onExpenseAdded }: Add
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label">Amount ($)</label>
+              <label className="label">Amount (NPR)</label>
               <input
                 type="number"
                 value={amount}
@@ -173,7 +183,7 @@ export default function AddExpenseModal({ isOpen, onClose, onExpenseAdded }: Add
           </div>
 
           <div>
-            <label className="label">Description (Optional)</label>
+            <label className="label">Description</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -184,7 +194,7 @@ export default function AddExpenseModal({ isOpen, onClose, onExpenseAdded }: Add
           </div>
 
           <div>
-            <label className="label">Receipt (Optional)</label>
+            <label className="label">Receipt</label>
             <div className="mt-2">
               {receiptPreview ? (
                 <div className="relative">
