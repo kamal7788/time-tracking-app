@@ -51,4 +51,5 @@ export const AuditEntities = {
   CLIENT: 'Client',
   PROJECT: 'Project',
   NOTIFICATION: 'Notification',
+  EXPENSE: 'Expense',
 } as const

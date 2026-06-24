@@ -32,6 +32,13 @@ enum LeaveRequestStatus {
   CANCELLED
 }
 
+enum ExpenseStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
 model User {
   id            String       @id @default(cuid())
   email         String       @unique
@@ -54,6 +61,7 @@ model User {
   sentNotifications Notification[] @relation("NotificationSender")
   receivedNotifications Notification[] @relation("NotificationRecipient")
   emailSettings     EmailSettings?
+  expenses          Expense[]
 
   @@map("users")
 }
@@ -267,4 +275,28 @@ model LeaveRequest {
   @@index([leaveTypeId])
   @@index([startDate, endDate])
   @@map("leave_requests")
+}
+
+model Expense {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemName      String        @db.VarChar(255)
+  amount        Decimal       @db.Decimal(10, 2)
+  date          DateTime      @db.Date
+  receiptPath   String?       @db.VarChar(500)
+  description   String?
+  status        ExpenseStatus @default(DRAFT)
+  submittedAt   DateTime?
+  approvedAt    DateTime?
+  approvedBy    String?
+  rejectedAt    DateTime?
+  rejectedBy    String?
+  rejectReason  String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([userId, date])
+  @@index([status])
+  @@map("expenses")
 }

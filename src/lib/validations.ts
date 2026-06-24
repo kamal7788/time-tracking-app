@@ -92,6 +92,27 @@ export const emailSettingsSchema = z.object({
   fromName: z.string().min(1, 'From name is required'),
 })
 
+export const expenseSchema = z.object({
+  itemName: z.string().min(1, 'Item name is required').max(255),
+  amount: z.number().positive('Amount must be positive').max(999999.99, 'Amount is too large'),
+  date: z.string().min(1, 'Date is required'),
+  description: z.string().optional(),
+})
+
+export const expenseApprovalSchema = z.object({
+  expenseIds: z.array(z.string()).min(1, 'At least one expense required'),
+  action: z.enum(['approve', 'reject']),
+  rejectReason: z.string().optional(),
+}).refine((data) => {
+  if (data.action === 'reject' && !data.rejectReason) {
+    return false
+  }
+  return true
+}, {
+  message: 'Rejection reason is required',
+  path: ['rejectReason'],
+})
+
 export type LoginInput = z.infer<typeof loginSchema>
 export type RegisterInput = z.infer<typeof registerSchema>
 export type TimeEntryInput = z.infer<typeof timeEntrySchema>
@@ -100,3 +121,5 @@ export type ProjectInput = z.infer<typeof projectSchema>
 export type CommonWorkInput = z.infer<typeof commonWorkSchema>
 export type ApprovalInput = z.infer<typeof approvalSchema>
 export type EmailSettingsInput = z.infer<typeof emailSettingsSchema>
+export type ExpenseInput = z.infer<typeof expenseSchema>
+export type ExpenseApprovalInput = z.infer<typeof expenseApprovalSchema>

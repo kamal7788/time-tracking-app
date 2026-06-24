@@ -38,3 +38,7 @@ next-env.d.ts
 
 # prisma
 prisma/migrations/
+
+# uploads
+public/uploads/expenses/*
+!public/uploads/expenses/.gitkeep
