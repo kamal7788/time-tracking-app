@@ -33,6 +33,7 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 COPY --from=builder /app/public ./public
+RUN mkdir -p public/uploads/expenses && chown -R nextjs:nodejs public/uploads
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY docker-entrypoint.sh ./
