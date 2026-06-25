@@ -98,6 +98,17 @@ export default function AdminTimeEntriesList({ timeEntries, users, projects }: A
     }
   }
 
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this time entry? This cannot be undone.')) return
+    try {
+      const res = await fetch(`/api/time-entries/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete')
+      window.location.reload()
+    } catch {
+      alert('Failed to delete entry')
+    }
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'DRAFT': return 'badge-draft'
@@ -225,27 +236,35 @@ export default function AdminTimeEntriesList({ timeEntries, users, projects }: A
                         )}
                       </td>
                       <td className="py-3 px-4">
-                        {entry.status === 'SUBMITTED' && (
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleApprove([entry.id])}
-                              disabled={isProcessing}
-                              className="text-green-600 hover:text-green-700 text-sm"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => {
-                                setSelectedIds([entry.id])
-                                setShowRejectModal(true)
-                              }}
-                              disabled={isProcessing}
-                              className="text-red-600 hover:text-red-700 text-sm"
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex gap-2">
+                          {entry.status === 'SUBMITTED' && (
+                            <>
+                              <button
+                                onClick={() => handleApprove([entry.id])}
+                                disabled={isProcessing}
+                                className="text-green-600 hover:text-green-700 text-sm"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedIds([entry.id])
+                                  setShowRejectModal(true)
+                                }}
+                                disabled={isProcessing}
+                                className="text-red-600 hover:text-red-700 text-sm"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          )}
+                          <button
+                            onClick={() => handleDelete(entry.id)}
+                            className="text-gray-400 hover:text-red-600 text-sm"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

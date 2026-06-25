@@ -178,7 +178,6 @@ export async function DELETE(
     const existingEntry = await prisma.timeEntry.findFirst({
       where: {
         id,
-        userId: session.userId,
       },
     })
 
@@ -189,7 +188,15 @@ export async function DELETE(
       )
     }
 
-    if (existingEntry.status !== 'DRAFT') {
+    // Only allow owner to delete DRAFT, admin can delete any
+    if (existingEntry.userId !== session.userId && session.role !== 'ADMIN') {
+      return NextResponse.json(
+        { error: 'Time entry not found' },
+        { status: 404 }
+      )
+    }
+
+    if (existingEntry.status !== 'DRAFT' && session.role !== 'ADMIN') {
       return NextResponse.json(
         { error: 'Cannot delete submitted time entries' },
         { status: 400 }

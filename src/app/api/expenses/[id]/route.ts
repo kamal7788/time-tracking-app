@@ -172,7 +172,6 @@ export async function DELETE(
     const existingExpense = await prisma.expense.findFirst({
       where: {
         id,
-        userId: session.userId,
       },
     })
 
@@ -183,7 +182,15 @@ export async function DELETE(
       )
     }
 
-    if (existingExpense.status !== 'DRAFT') {
+    // Only allow owner to delete DRAFT, admin can delete any
+    if (existingExpense.userId !== session.userId && session.role !== 'ADMIN') {
+      return NextResponse.json(
+        { error: 'Expense not found' },
+        { status: 404 }
+      )
+    }
+
+    if (existingExpense.status !== 'DRAFT' && session.role !== 'ADMIN') {
       return NextResponse.json(
         { error: 'Cannot delete submitted expenses' },
         { status: 400 }
