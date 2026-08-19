@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { getNotifications, getUnreadCount, markAllNotificationsRead } from '@/lib/notifications'
+import { handleApiError } from '@/lib/api'
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,14 +16,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ notifications, unreadCount })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Get notifications error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Get notifications error:')
   }
 }
 
@@ -39,13 +33,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Notifications action error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Notifications action error:')
   }
 }

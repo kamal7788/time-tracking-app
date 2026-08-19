@@ -1,13 +1,17 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { formatTime, formatDuration, formatDate, timeStringToMinutes } from '@/lib/utils'
+import { useRouter } from 'next/navigation'
+import { formatStoredTime, storedTimeToHHMM, formatDuration, formatDate, timeStringToMinutes, entryDateKey } from '@/lib/utils'
+import { Modal, ConfirmDialog } from '@/components/ui/modal'
+import { useToast } from '@/components/ui/toast'
+import { EditIcon, TrashIcon, SendIcon, CalendarIcon, ClockIcon } from '@/components/ui/icons'
 
 interface TimeEntry {
   id: string
-  date: Date
-  startTime: Date
-  endTime: Date
+  date: string
+  startTime: string
+  endTime: string
   duration: number
   description: string | null
   status: string
@@ -17,8 +21,8 @@ interface TimeEntry {
 
 interface ClockSession {
   id: string
-  clockIn: Date
-  clockOut: Date | null
+  clockIn: string
+  clockOut: string | null
   duration: number | null
   description: string | null
   status: string
@@ -34,12 +38,14 @@ interface TimeEntriesListProps {
   weekEnd: string
 }
 
-export default function TimeEntriesList({ timeEntries, clockSessions, projects, commonWorks, weekStart, weekEnd }: TimeEntriesListProps) {
+export default function TimeEntriesList({ timeEntries, clockSessions, projects, weekStart, weekEnd }: TimeEntriesListProps) {
+  const router = useRouter()
+  const toast = useToast()
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
+  const [deletingEntry, setDeletingEntry] = useState<TimeEntry | null>(null)
   const [activeTab, setActiveTab] = useState<'entries' | 'clocks'>('entries')
   const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState('')
-  const [submitSuccess, setSubmitSuccess] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   const [editProjectId, setEditProjectId] = useState('')
   const [editDate, setEditDate] = useState('')
@@ -52,17 +58,16 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
   useEffect(() => {
     if (editingEntry) {
       setEditProjectId(editingEntry.projectId)
-      const d = new Date(editingEntry.date)
-      setEditDate(d.toISOString().split('T')[0])
-      setEditStartTime(formatTime(editingEntry.startTime))
-      setEditEndTime(formatTime(editingEntry.endTime))
+      setEditDate(entryDateKey(editingEntry.date))
+      setEditStartTime(storedTimeToHHMM(editingEntry.startTime))
+      setEditEndTime(storedTimeToHHMM(editingEntry.endTime))
       setEditDescription(editingEntry.description || '')
       setEditError('')
     }
   }, [editingEntry])
 
   const groupedByDate = timeEntries.reduce((acc, entry) => {
-    const dateKey = entry.date.toString().split('T')[0]
+    const dateKey = entryDateKey(entry.date)
     if (!acc[dateKey]) acc[dateKey] = []
     acc[dateKey].push(entry)
     return acc
@@ -77,28 +82,40 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
 
   const dailyTotal = (entries: TimeEntry[]) => entries.reduce((sum, e) => sum + e.duration, 0)
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this time entry?')) return
+  const handleDelete = async () => {
+    if (!deletingEntry) return
+    setDeleting(true)
     try {
-      const res = await fetch(`/api/time-entries/${id}`, { method: 'DELETE' })
-      if (res.ok) window.location.reload()
+      const res = await fetch(`/api/time-entries/${deletingEntry.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to delete entry')
+      }
+      toast.success('Time entry deleted')
+      setDeletingEntry(null)
+      router.refresh()
     } catch (error) {
-      alert('Failed to delete entry')
+      toast.error(error instanceof Error ? error.message : 'Failed to delete entry')
+    } finally {
+      setDeleting(false)
     }
   }
 
   const checkOverlap = (startTime: string, endTime: string, date: string, excludeId?: string): string | null => {
     const newStart = timeStringToMinutes(startTime)
-    const newEnd = timeStringToMinutes(endTime)
+    let newEnd = timeStringToMinutes(endTime)
+    if (isNaN(newStart) || isNaN(newEnd)) return null
+    if (newEnd <= newStart) newEnd += 1440 // overnight
     for (const entry of timeEntries) {
       if (excludeId && entry.id === excludeId) continue
-      const entryDate = new Date(entry.date).toISOString().split('T')[0]
-      if (entryDate !== date) continue
+      if (entryDateKey(entry.date) !== date) continue
       if (entry.status === 'REJECTED') continue
-      const existStart = timeStringToMinutes(formatTime(entry.startTime))
-      const existEnd = timeStringToMinutes(formatTime(entry.endTime))
+      const existStart = timeStringToMinutes(storedTimeToHHMM(entry.startTime))
+      let existEnd = timeStringToMinutes(storedTimeToHHMM(entry.endTime))
+      if (isNaN(existStart) || isNaN(existEnd)) continue
+      if (existEnd <= existStart) existEnd += 1440
       if (newStart < existEnd && existStart < newEnd) {
-        return `Overlaps with ${formatTime(entry.startTime)} - ${formatTime(entry.endTime)} (${entry.project.client.name} - ${entry.project.name})`
+        return `Overlaps with ${formatStoredTime(entry.startTime)} - ${formatStoredTime(entry.endTime)} (${entry.project.client.name} - ${entry.project.name})`
       }
     }
     return null
@@ -132,7 +149,8 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
       const result = await res.json()
       if (!res.ok) throw new Error(result.error)
       setEditingEntry(null)
-      window.location.reload()
+      toast.success('Time entry updated')
+      router.refresh()
     } catch (error) {
       setEditError(error instanceof Error ? error.message : 'Failed to update entry')
     } finally {
@@ -142,8 +160,6 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
 
   const handleSubmitWeek = async () => {
     setSubmitting(true)
-    setSubmitError('')
-    setSubmitSuccess('')
     try {
       const res = await fetch('/api/time-entries/submit', {
         method: 'POST',
@@ -152,27 +168,12 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
       })
       const result = await res.json()
       if (!res.ok) throw new Error(result.error)
-      setSubmitSuccess(`Submitted ${result.submittedCount} entries for approval`)
-      setTimeout(() => window.location.reload(), 1500)
+      toast.success(`Submitted ${result.submittedCount} entries for approval`)
+      router.refresh()
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'Failed to submit')
+      toast.error(error instanceof Error ? error.message : 'Failed to submit')
     } finally {
       setSubmitting(false)
-    }
-  }
-
-  const handleStatusUpdate = async (ids: string[], action: 'approve' | 'reject') => {
-    const reason = action === 'reject' ? prompt('Reason for rejection:') : undefined
-    if (action === 'reject' && !reason) return
-    try {
-      const res = await fetch('/api/admin/time-entries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ timeEntryIds: ids, action, rejectReason: reason }),
-      })
-      if (res.ok) window.location.reload()
-    } catch (error) {
-      alert('Failed to update status')
     }
   }
 
@@ -187,42 +188,26 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
 
   return (
     <div className="space-y-6">
-      {/* Alerts */}
-      {submitSuccess && (
-        <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 text-emerald-700 px-5 py-3.5 rounded-2xl animate-slide-up">
-          <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span className="font-medium">{submitSuccess}</span>
-        </div>
-      )}
-      {submitError && (
-        <div className="flex items-center gap-3 bg-red-50 border border-red-200 text-red-600 px-5 py-3.5 rounded-2xl animate-slide-up">
-          <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span className="font-medium">{submitError}</span>
-        </div>
-      )}
-
       {/* Tabs + Submit */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex gap-1 p-1 bg-brand-surface rounded-xl">
+        <div className="flex gap-1 p-1 bg-brand-surface-dark rounded-lg w-fit">
           <button
+            type="button"
             onClick={() => setActiveTab('entries')}
-            className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
-              activeTab === 'entries' 
-                ? 'bg-white text-brand-navy shadow-soft' 
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+              activeTab === 'entries'
+                ? 'bg-white text-brand-navy shadow-soft'
                 : 'text-brand-gray hover:text-brand-navy'
             }`}
           >
             Manual Entries ({timeEntries.length})
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('clocks')}
-            className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
-              activeTab === 'clocks' 
-                ? 'bg-white text-brand-navy shadow-soft' 
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+              activeTab === 'clocks'
+                ? 'bg-white text-brand-navy shadow-soft'
                 : 'text-brand-gray hover:text-brand-navy'
             }`}
           >
@@ -230,65 +215,60 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
           </button>
         </div>
         <button
+          type="button"
           onClick={handleSubmitWeek}
           disabled={submitting}
           className="btn-primary"
         >
-          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-          </svg>
-          {submitting ? 'Submitting...' : 'Submit Week'}
+          <SendIcon className="w-4 h-4" />
+          {submitting ? 'Submitting…' : 'Submit Week'}
         </button>
       </div>
 
       {/* Manual Entries */}
       {activeTab === 'entries' && (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {Object.entries(groupedByDate).length === 0 ? (
             <div className="card">
               <div className="card-body text-center py-16">
-                <div className="w-14 h-14 mx-auto rounded-2xl bg-brand-blue/10 flex items-center justify-center mb-4">
-                  <svg className="w-7 h-7 text-brand-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                  </svg>
+                <div className="w-12 h-12 mx-auto rounded-lg bg-brand-blue/10 flex items-center justify-center mb-4">
+                  <ClockIcon className="w-6 h-6 text-brand-blue" />
                 </div>
-                <p className="text-brand-gray font-medium">No time entries for this week</p>
+                <p className="text-brand-navy font-medium">No time entries for this week</p>
                 <p className="text-brand-gray-light text-sm mt-1">Add your first entry to get started</p>
               </div>
             </div>
           ) : (
             Object.entries(groupedByDate).map(([date, entries]) => (
-              <div key={date} className="card animate-slide-up">
+              <div key={date} className="card">
                 <div className="card-header flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-brand-blue/10 flex items-center justify-center">
-                      <svg className="w-5 h-5 text-brand-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
+                    <div className="w-9 h-9 rounded-lg bg-brand-blue/10 flex items-center justify-center">
+                      <CalendarIcon className="w-4 h-4 text-brand-blue" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-brand-navy">{formatDate(date)}</h3>
+                      <h3 className="font-semibold text-brand-navy">{formatDate(date)}</h3>
                       <p className="text-xs text-brand-gray">{entries.length} {entries.length === 1 ? 'entry' : 'entries'}</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-xl font-bold text-brand-blue">{formatDuration(dailyTotal(entries))}</p>
-                    <p className="text-xs text-brand-gray">Daily Total</p>
+                    <p className="text-lg font-semibold text-brand-blue tabular-nums">{formatDuration(dailyTotal(entries))}</p>
+                    <p className="text-xs text-brand-gray">Daily total</p>
                   </div>
                 </div>
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-brand-border/60">
                   {entries.map((entry) => (
-                    <div key={entry.id} className="px-6 py-4 hover:bg-brand-surface/30 transition-colors group">
-                      <div className="flex items-center justify-between">
+                    <div key={entry.id} className="px-5 py-4 hover:bg-brand-surface/60 transition-colors group">
+                      <div className="flex items-center justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-3">
                             <div className="w-1 h-10 rounded-full bg-brand-blue/30" />
-                            <div>
-                              <p className="font-semibold text-brand-navy">
-                                {formatTime(entry.startTime)} - {formatTime(entry.endTime)}
+                            <div className="min-w-0">
+                              <p className="font-medium text-brand-navy tabular-nums">
+                                {formatStoredTime(entry.startTime)} - {formatStoredTime(entry.endTime)}
                               </p>
-                              <p className="text-sm text-brand-gray">
-                                {entry.project.client.name} <span className="text-brand-gray-light">/</span> {entry.project.name}
+                              <p className="text-sm text-brand-gray truncate">
+                                {entry.project.client.name} <span className="text-brand-gray-muted">/</span> {entry.project.name}
                               </p>
                             </div>
                           </div>
@@ -296,30 +276,30 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
                             <p className="text-sm text-brand-gray-light mt-1.5 ml-4">{entry.description}</p>
                           )}
                         </div>
-                        <div className="flex items-center gap-4">
-                          <span className="text-lg font-bold text-brand-blue">{formatDuration(entry.duration)}</span>
+                        <div className="flex items-center gap-3 flex-shrink-0">
+                          <span className="text-base font-semibold text-brand-blue tabular-nums">{formatDuration(entry.duration)}</span>
                           <span className={getStatusBadge(entry.status)}>
                             {entry.status}
                           </span>
                           {entry.status === 'DRAFT' && (
-                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex gap-1 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-within:opacity-100 transition-opacity">
                               <button
+                                type="button"
                                 onClick={() => setEditingEntry(entry)}
-                                className="p-2 rounded-xl text-brand-gray hover:text-brand-blue hover:bg-brand-blue/10 transition-all"
+                                className="p-2 rounded-lg text-brand-gray hover:text-brand-blue hover:bg-brand-blue/10 transition-colors cursor-pointer"
+                                aria-label="Edit entry"
                                 title="Edit"
                               >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
+                                <EditIcon className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => handleDelete(entry.id)}
-                                className="p-2 rounded-xl text-brand-gray hover:text-red-500 hover:bg-red-50 transition-all"
+                                type="button"
+                                onClick={() => setDeletingEntry(entry)}
+                                className="p-2 rounded-lg text-brand-gray hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                aria-label="Delete entry"
                                 title="Delete"
                               >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
+                                <TrashIcon className="w-4 h-4" />
                               </button>
                             </div>
                           )}
@@ -336,37 +316,39 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
 
       {/* Clock Sessions */}
       {activeTab === 'clocks' && (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {Object.entries(clockSessionsByDate).length === 0 ? (
             <div className="card">
               <div className="card-body text-center py-16">
-                <div className="w-14 h-14 mx-auto rounded-2xl bg-brand-blue/10 flex items-center justify-center mb-4">
-                  <svg className="w-7 h-7 text-brand-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+                <div className="w-12 h-12 mx-auto rounded-lg bg-brand-blue/10 flex items-center justify-center mb-4">
+                  <ClockIcon className="w-6 h-6 text-brand-blue" />
                 </div>
-                <p className="text-brand-gray font-medium">No clock sessions for this week</p>
+                <p className="text-brand-navy font-medium">No clock sessions for this week</p>
               </div>
             </div>
           ) : (
             Object.entries(clockSessionsByDate).map(([date, sessions]) => (
-              <div key={date} className="card animate-slide-up">
+              <div key={date} className="card">
                 <div className="card-header">
-                  <h3 className="font-bold text-brand-navy">{formatDate(date)}</h3>
+                  <h3 className="font-semibold text-brand-navy">{formatDate(date)}</h3>
                 </div>
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-brand-border/60">
                   {sessions.map((session) => (
-                    <div key={session.id} className="px-6 py-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-1 h-10 rounded-full ${session.status === 'ACTIVE' ? 'bg-emerald-400' : 'bg-gray-200'}`} />
-                          <div>
-                            <p className="font-semibold text-brand-navy">
-                              {formatTime(session.clockIn)} - {session.clockOut ? formatTime(session.clockOut) : 'Active'}
+                    <div key={session.id} className="px-5 py-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`w-1 h-10 rounded-full flex-shrink-0 ${session.status === 'ACTIVE' ? 'bg-emerald-400' : 'bg-brand-border'}`} />
+                          <div className="min-w-0">
+                            <p className="font-medium text-brand-navy tabular-nums">
+                              {new Date(session.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                              {' - '}
+                              {session.clockOut
+                                ? new Date(session.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                                : 'Active'}
                             </p>
                             {session.project && (
-                              <p className="text-sm text-brand-gray">
-                                {session.project.client.name} <span className="text-brand-gray-light">/</span> {session.project.name}
+                              <p className="text-sm text-brand-gray truncate">
+                                {session.project.client.name} <span className="text-brand-gray-muted">/</span> {session.project.name}
                               </p>
                             )}
                             {session.description && (
@@ -374,9 +356,9 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-lg font-bold text-brand-blue">
-                            {session.duration ? formatDuration(session.duration) : 'In Progress'}
+                        <div className="flex items-center gap-3 flex-shrink-0">
+                          <span className="text-base font-semibold text-brand-blue tabular-nums">
+                            {session.duration ? formatDuration(session.duration) : 'In progress'}
                           </span>
                           <span className={getStatusBadge(session.status === 'COMPLETED' ? 'APPROVED' : session.status === 'ACTIVE' ? 'SUBMITTED' : 'REJECTED')}>
                             {session.status}
@@ -393,80 +375,77 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
       )}
 
       {/* Edit Modal */}
-      {editingEntry && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-navy/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl shadow-lifted max-w-md w-full max-h-[90vh] overflow-y-auto animate-slide-up">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-              <div>
-                <h3 className="text-lg font-bold text-brand-navy">Edit Time Entry</h3>
-                <p className="text-sm text-brand-gray mt-0.5">Update entry details below</p>
-              </div>
-              <button onClick={() => setEditingEntry(null)} className="p-2 rounded-xl text-brand-gray hover:text-brand-navy hover:bg-brand-surface transition-all">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+      <Modal open={!!editingEntry} onClose={() => setEditingEntry(null)} title="Edit Time Entry">
+        <div className="space-y-4">
+          {editError && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm font-medium" role="alert">
+              {editError}
             </div>
-            <div className="p-6 space-y-5">
-              {editError && (
-                <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm font-medium">
-                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  {editError}
-                </div>
-              )}
-              <div>
-                <label className="label">Project</label>
-                <select value={editProjectId} onChange={(e) => setEditProjectId(e.target.value)} className="input">
-                  <option value="">Select project...</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.client.name} - {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Date</label>
-                  <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="input" />
-                </div>
-                <div>
-                  <label className="label">Start Time</label>
-                  <input type="time" value={editStartTime} onChange={(e) => setEditStartTime(e.target.value)} className="input" step={900} />
-                </div>
-                <div>
-                  <label className="label">End Time</label>
-                  <input type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)} className="input" step={900} />
-                </div>
-              </div>
-              <div>
-                <label className="label">Description</label>
-                <textarea
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  rows={2}
-                  className="input"
-                  placeholder="What did you work on?"
-                />
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setEditingEntry(null)} className="btn-outline flex-1">
-                  Cancel
-                </button>
-                <button
-                  onClick={handleEditSubmit}
-                  disabled={editSubmitting}
-                  className="btn-primary flex-1"
-                >
-                  {editSubmitting ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
+          )}
+          <div>
+            <label htmlFor="edit-project" className="label">Project</label>
+            <select id="edit-project" value={editProjectId} onChange={(e) => setEditProjectId(e.target.value)} className="input">
+              <option value="">Select project...</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.client.name} - {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label htmlFor="edit-date" className="label">Date</label>
+              <input id="edit-date" type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="input" />
+            </div>
+            <div>
+              <label htmlFor="edit-start" className="label">Start Time</label>
+              <input id="edit-start" type="time" value={editStartTime} onChange={(e) => setEditStartTime(e.target.value)} className="input" step={900} />
+            </div>
+            <div>
+              <label htmlFor="edit-end" className="label">End Time</label>
+              <input id="edit-end" type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)} className="input" step={900} />
             </div>
           </div>
+          <p className="text-xs text-brand-gray-light">Overnight entries are supported — an end time earlier than the start time rolls into the next day.</p>
+          <div>
+            <label htmlFor="edit-description" className="label">Description</label>
+            <textarea
+              id="edit-description"
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              rows={2}
+              className="input"
+              placeholder="What did you work on?"
+            />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={() => setEditingEntry(null)} className="btn-outline flex-1">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleEditSubmit}
+              disabled={editSubmitting}
+              className="btn-primary flex-1"
+            >
+              {editSubmitting ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
         </div>
-      )}
+      </Modal>
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        open={!!deletingEntry}
+        onClose={() => setDeletingEntry(null)}
+        onConfirm={handleDelete}
+        title="Delete Time Entry"
+        message={`Delete the entry ${deletingEntry ? `${formatStoredTime(deletingEntry.startTime)} - ${formatStoredTime(deletingEntry.endTime)}` : ''}? This cannot be undone.`}
+        confirmLabel="Delete"
+        destructive
+        loading={deleting}
+      />
     </div>
   )
 }

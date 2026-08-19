@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getSession, requireAuth, requireAdmin } from '@/lib/auth'
-import { createAuditLog, AuditActions } from '@/lib/audit'
+import { requireAuth, requireAdmin } from '@/lib/auth'
+import { createAuditLog, AuditActions, AuditEntities } from '@/lib/audit'
+import { handleApiError } from '@/lib/api'
 import { z } from 'zod'
 
 const allocateBalanceSchema = z.object({
-  userId: z.string(),
-  leaveTypeId: z.string(),
-  year: z.number().int().min(2020).max(2030),
-  allocatedDays: z.number().positive(),
-  carriedOverDays: z.number().min(0).default(0),
+  userId: z.string().min(1).max(64),
+  leaveTypeId: z.string().min(1).max(64),
+  year: z.number().int().min(2000).max(2100),
+  allocatedDays: z.number().min(0).max(365),
+  carriedOverDays: z.number().min(0).max(365).default(0),
 })
 
 export async function GET(request: NextRequest) {
@@ -43,14 +44,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ balances })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Get leave balances error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Get leave balances error:')
   }
 }
 
@@ -59,6 +53,18 @@ export async function POST(request: NextRequest) {
     const session = await requireAdmin()
     const body = await request.json()
     const validated = allocateBalanceSchema.parse(body)
+
+    // Validate referenced records exist and are usable
+    const [targetUser, leaveType] = await Promise.all([
+      prisma.user.findUnique({ where: { id: validated.userId }, select: { id: true, isActive: true } }),
+      prisma.leaveType.findUnique({ where: { id: validated.leaveTypeId }, select: { id: true, isActive: true } }),
+    ])
+    if (!targetUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+    if (!leaveType || !leaveType.isActive) {
+      return NextResponse.json({ error: 'Invalid leave type' }, { status: 400 })
+    }
 
     const existing = await prisma.leaveBalance.findUnique({
       where: {
@@ -97,29 +103,13 @@ export async function POST(request: NextRequest) {
     await createAuditLog({
       userId: session.userId,
       action: existing ? AuditActions.UPDATE : AuditActions.CREATE,
-      entity: 'LeaveBalance',
+      entity: AuditEntities.LEAVE_BALANCE,
       entityId: balance.id,
       newData: validated,
     })
 
     return NextResponse.json({ balance }, { status: existing ? 200 : 201 })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json(
-        { error: 'Validation error', details: error },
-        { status: 400 }
-      )
-    }
-    console.error('Allocate leave balance error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Allocate leave balance')
   }
 }

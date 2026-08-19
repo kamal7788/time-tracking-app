@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
 import { hashPassword } from '@/lib/auth'
+import { adminCreateUserSchema } from '@/lib/validations'
+import { handleApiError, getPagination } from '@/lib/api'
 
 export async function GET(request: NextRequest) {
   try {
     await requireAdmin()
     const { searchParams } = new URL(request.url)
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '20')
-    const search = searchParams.get('search')
+    const { page, limit, skip } = getPagination(searchParams)
+    const search = searchParams.get('search')?.slice(0, 100)
 
     const where: Record<string, unknown> = {}
     if (search) {
@@ -27,13 +28,14 @@ export async function GET(request: NextRequest) {
           email: true,
           name: true,
           role: true,
+          isActive: true,
           createdAt: true,
           _count: {
             select: { timeEntries: true },
           },
         },
         orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
+        skip,
         take: limit,
       }),
       prisma.user.count({ where }),
@@ -49,33 +51,17 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Admin get users error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Admin get users')
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireAdmin()
+    await requireAdmin()
     const body = await request.json()
-    const { name, email, password, role } = body
+    const validated = adminCreateUserSchema.parse(body)
 
-    if (!name || !email || !password) {
-      return NextResponse.json(
-        { error: 'Name, email, and password are required' },
-        { status: 400 }
-      )
-    }
-
+    const email = validated.email.toLowerCase()
     const existingUser = await prisma.user.findUnique({
       where: { email },
     })
@@ -87,36 +73,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const passwordHash = await hashPassword(password)
+    const passwordHash = await hashPassword(validated.password)
 
     const user = await prisma.user.create({
       data: {
-        name,
+        name: validated.name,
         email,
         passwordHash,
-        role: role || 'USER',
+        role: validated.role || 'USER',
       },
       select: {
         id: true,
         email: true,
         name: true,
         role: true,
+        isActive: true,
         createdAt: true,
       },
     })
 
     return NextResponse.json({ user }, { status: 201 })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Admin create user error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Admin create user')
   }
 }

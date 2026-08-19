@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
+import { approvalSchema } from '@/lib/validations'
 import { createAuditLog, AuditActions, AuditEntities } from '@/lib/audit'
 import { sendTimeEntryApprovedEmail, sendTimeEntryRejectedEmail } from '@/lib/email'
 import { sendNotification } from '@/lib/notifications'
+import { handleApiError, getPagination, parseDateParam } from '@/lib/api'
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,11 +13,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
     const status = searchParams.get('status')
-    const startDate = searchParams.get('startDate')
-    const endDate = searchParams.get('endDate')
+    const startDate = parseDateParam(searchParams.get('startDate'))
+    const endDate = parseDateParam(searchParams.get('endDate'))
     const projectId = searchParams.get('projectId')
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '50')
+    const { page, limit, skip } = getPagination(searchParams, 50, 200)
 
     const where: Record<string, unknown> = {}
 
@@ -23,15 +24,12 @@ export async function GET(request: NextRequest) {
       where.userId = userId
     }
 
-    if (status) {
+    if (status && ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED'].includes(status)) {
       where.status = status
     }
 
     if (startDate && endDate) {
-      where.date = {
-        gte: new Date(startDate),
-        lte: new Date(endDate),
-      }
+      where.date = { gte: startDate, lte: endDate }
     }
 
     if (projectId) {
@@ -56,7 +54,7 @@ export async function GET(request: NextRequest) {
           { user: { name: 'asc' } },
           { startTime: 'asc' },
         ],
-        skip: (page - 1) * limit,
+        skip,
         take: limit,
       }),
       prisma.timeEntry.count({ where }),
@@ -72,17 +70,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Admin get time entries error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Admin get time entries')
   }
 }
 
@@ -90,28 +78,7 @@ export async function POST(request: NextRequest) {
   try {
     const session = await requireAdmin()
     const body = await request.json()
-    const { timeEntryIds, action, rejectReason } = body
-
-    if (!timeEntryIds || !Array.isArray(timeEntryIds) || timeEntryIds.length === 0) {
-      return NextResponse.json(
-        { error: 'Time entry IDs are required' },
-        { status: 400 }
-      )
-    }
-
-    if (!['approve', 'reject'].includes(action)) {
-      return NextResponse.json(
-        { error: 'Invalid action' },
-        { status: 400 }
-      )
-    }
-
-    if (action === 'reject' && !rejectReason) {
-      return NextResponse.json(
-        { error: 'Rejection reason is required' },
-        { status: 400 }
-      )
-    }
+    const { timeEntryIds, action, rejectReason } = approvalSchema.parse(body)
 
     const entries = await prisma.timeEntry.findMany({
       where: {
@@ -133,11 +100,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const validIds = entries.map((e) => e.id)
     const newStatus = action === 'approve' ? 'APPROVED' : 'REJECTED'
     const now = new Date()
 
+    // Only flip rows that are still SUBMITTED — prevents smuggled IDs of other statuses
     await prisma.timeEntry.updateMany({
-      where: { id: { in: timeEntryIds } },
+      where: { id: { in: validIds }, status: 'SUBMITTED' },
       data: {
         status: newStatus,
         [action === 'approve' ? 'approvedAt' : 'rejectedAt']: now,
@@ -146,23 +115,23 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    for (const entry of entries) {
+    const sideEffects = entries.map(async (entry) => {
       await createAuditLog({
         userId: session.userId,
         action: action === 'approve' ? AuditActions.APPROVE : AuditActions.REJECT,
         entity: AuditEntities.TIME_ENTRY,
         entityId: entry.id,
         oldData: { status: 'SUBMITTED' },
-        newData: { 
-          status: newStatus, 
+        newData: {
+          status: newStatus,
           [action === 'approve' ? 'approvedAt' : 'rejectedAt']: now,
           [action === 'approve' ? 'approvedBy' : 'rejectedBy']: session.userId,
           rejectReason: action === 'reject' ? rejectReason : undefined,
         },
       })
 
-      // Send email to user
       if (entry.user) {
+        const dateStr = entry.date.toISOString().split('T')[0]
         if (action === 'approve') {
           await sendTimeEntryApprovedEmail(entry.user.email, entry.user.name, entry.date, entry.date)
         } else {
@@ -173,29 +142,22 @@ export async function POST(request: NextRequest) {
           userId: entry.user.id,
           type: action === 'approve' ? 'TIME_ENTRY_APPROVED' : 'TIME_ENTRY_REJECTED',
           title: `Time Entry ${action === 'approve' ? 'Approved' : 'Rejected'}`,
-          message: `Your time entry for ${entry.project.client.name} - ${entry.project.name} on ${entry.date.toLocaleDateString()} was ${action === 'approve' ? 'approved' : 'rejected'}.`,
+          message: `Your time entry for ${entry.project.client.name} - ${entry.project.name} on ${dateStr} was ${action === 'approve' ? 'approved' : 'rejected'}.`,
           senderId: session.userId,
           metadata: { timeEntryId: entry.id, projectId: entry.projectId },
         })
       }
-    }
+    })
 
-    return NextResponse.json({ 
-      success: true, 
+    // Side effects must not fail the whole request after the state change succeeded
+    await Promise.allSettled(sideEffects)
+
+    return NextResponse.json({
+      success: true,
       updatedCount: entries.length,
       action,
     })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Admin approve/reject error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Admin approve/reject')
   }
 }

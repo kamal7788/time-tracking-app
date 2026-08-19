@@ -1,27 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
-import { formatDuration } from '@/lib/utils'
+import { formatDuration, storedTimeToHHMM, entryDateKey } from '@/lib/utils'
+import { handleApiError, parseDateParam } from '@/lib/api'
+
+const MAX_REPORT_ROWS = 10000
+
+/** Escapes a CSV cell: quotes embedded quotes and neutralizes formula injection. */
+function csvCell(value: unknown): string {
+  let s = value === null || value === undefined ? '' : String(value)
+  // Neutralize spreadsheet formula injection
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
+  return `"${s.replace(/"/g, '""')}"`
+}
+
+function safeFilenamePart(value: string | null): string {
+  if (!value) return 'all'
+  const cleaned = value.replace(/[^0-9a-zA-Z-]/g, '')
+  return cleaned || 'all'
+}
 
 export async function GET(request: NextRequest) {
   try {
     await requireAdmin()
     const { searchParams } = new URL(request.url)
-    const startDate = searchParams.get('startDate')
-    const endDate = searchParams.get('endDate')
+    const startDateRaw = searchParams.get('startDate')
+    const endDateRaw = searchParams.get('endDate')
+    const startDate = parseDateParam(startDateRaw)
+    const endDate = parseDateParam(endDateRaw)
     const userId = searchParams.get('userId')
     const projectId = searchParams.get('projectId')
     const format = searchParams.get('format') // 'json', 'csv', 'pdf'
+
+    if ((startDateRaw && !startDate) || (endDateRaw && !endDate)) {
+      return NextResponse.json({ error: 'Invalid date format. Use YYYY-MM-DD.' }, { status: 400 })
+    }
 
     const where: Record<string, unknown> = {
       status: { in: ['SUBMITTED', 'APPROVED'] },
     }
 
     if (startDate && endDate) {
-      where.date = {
-        gte: new Date(startDate),
-        lte: new Date(endDate),
-      }
+      where.date = { gte: startDate, lte: endDate }
     }
 
     if (userId) {
@@ -48,6 +68,7 @@ export async function GET(request: NextRequest) {
         { date: 'asc' },
         { user: { name: 'asc' } },
       ],
+      take: MAX_REPORT_ROWS,
     })
 
     // Aggregate by user
@@ -81,7 +102,7 @@ export async function GET(request: NextRequest) {
       const uStats = userStats.get(entry.userId)!
       uStats.totalMinutes += entry.duration
       uStats.entries += 1
-      const dayKey = entry.date.toISOString().split('T')[0]
+      const dayKey = entryDateKey(entry.date)
       uStats.days.set(dayKey, (uStats.days.get(dayKey) || 0) + entry.duration)
 
       const projectKey = entry.projectId
@@ -119,11 +140,11 @@ export async function GET(request: NextRequest) {
     const report = {
       summary: {
         totalEntries: timeEntries.length,
-        totalMinutes: timeEntries.reduce((sum: number, e: { duration: number }) => sum + e.duration, 0),
-        totalHours: timeEntries.reduce((sum: number, e: { duration: number }) => sum + e.duration, 0) / 60,
+        totalMinutes: timeEntries.reduce((sum, e) => sum + e.duration, 0),
+        totalHours: timeEntries.reduce((sum, e) => sum + e.duration, 0) / 60,
         uniqueUsers: userStats.size,
         uniqueProjects: projectStats.size,
-        dateRange: { start: startDate, end: endDate },
+        dateRange: { start: startDateRaw, end: endDateRaw },
       },
       byUser: Array.from(userStats.values()).map(u => ({
         user: u.user,
@@ -151,13 +172,13 @@ export async function GET(request: NextRequest) {
           formatted: formatDuration(u.minutes),
         })),
       })),
-      rawEntries: timeEntries.map((e: any) => ({
+      rawEntries: timeEntries.map((e) => ({
         id: e.id,
         user: e.user.name,
         userEmail: e.user.email,
-        date: e.date.toISOString().split('T')[0],
-        startTime: e.startTime.toISOString().substr(11, 5),
-        endTime: e.endTime.toISOString().substr(11, 5),
+        date: entryDateKey(e.date),
+        startTime: storedTimeToHHMM(e.startTime),
+        endTime: storedTimeToHHMM(e.endTime),
         duration: e.duration,
         formattedDuration: formatDuration(e.duration),
         project: e.project.name,
@@ -174,33 +195,32 @@ export async function GET(request: NextRequest) {
     }
 
     if (format === 'pdf') {
-      return generatePDF(report)
+      return await generatePDF(report)
     }
 
     return NextResponse.json(report)
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Reports error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Reports')
   }
 }
 
-function generateCSV(report: any) {
+type ReportData = {
+  summary: { dateRange: { start: string | null; end: string | null }; totalHours: number; totalEntries: number }
+  rawEntries: Array<{
+    date: string; user: string; userEmail: string; client: string; project: string
+    startTime: string; endTime: string; duration: number; formattedDuration: string
+    description: string | null; status: string
+  }>
+}
+
+function generateCSV(report: ReportData) {
   const headers = [
-    'Date', 'User', 'User Email', 'Client', 'Project', 
-    'Start Time', 'End Time', 'Duration (min)', 'Duration', 
+    'Date', 'User', 'User Email', 'Client', 'Project',
+    'Start Time', 'End Time', 'Duration (min)', 'Duration',
     'Description', 'Status'
   ]
-  
-  const rows = report.rawEntries.map((e: any) => [
+
+  const rows = report.rawEntries.map((e) => [
     e.date,
     e.user,
     e.userEmail,
@@ -214,21 +234,61 @@ function generateCSV(report: any) {
     e.status,
   ])
 
-  const csv = [headers.join(','), ...rows.map((r: any) => r.map((v: any) => `"${v}"`).join(','))].join('\n')
-  
+  const csv = [
+    headers.map(csvCell).join(','),
+    ...rows.map((r) => r.map(csvCell).join(',')),
+  ].join('\r\n')
+
   return new NextResponse(csv, {
     headers: {
-      'Content-Type': 'text/csv',
-      'Content-Disposition': `attachment; filename="time-report-${report.summary.dateRange.start}-to-${report.summary.dateRange.end}.csv"`,
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="time-report-${safeFilenamePart(report.summary.dateRange.start)}-to-${safeFilenamePart(report.summary.dateRange.end)}.csv"`,
     },
   })
 }
 
-function generatePDF(report: any) {
-  // This would require a PDF generation library
-  // For now, return JSON with a note
-  return NextResponse.json({ 
-    ...report, 
-    note: 'PDF generation not implemented. Use CSV export or implement with jsPDF.' 
+async function generatePDF(report: ReportData) {
+  const { jsPDF } = await import('jspdf')
+  const autoTable = (await import('jspdf-autotable')).default
+
+  const doc = new jsPDF({ orientation: 'landscape' })
+
+  doc.setFontSize(16)
+  doc.text('Time Report', 14, 15)
+  doc.setFontSize(10)
+  doc.text(
+    `Period: ${report.summary.dateRange.start || 'all'} to ${report.summary.dateRange.end || 'all'}  |  Total: ${report.summary.totalHours.toFixed(1)}h across ${report.summary.totalEntries} entries`,
+    14,
+    23
+  )
+
+  autoTable(doc, {
+    startY: 28,
+    head: [[
+      'Date', 'User', 'Client', 'Project', 'Start', 'End', 'Duration', 'Description', 'Status',
+    ]],
+    body: report.rawEntries.map((e) => [
+      e.date,
+      e.user,
+      e.client,
+      e.project,
+      e.startTime,
+      e.endTime,
+      e.formattedDuration,
+      (e.description || '').slice(0, 80),
+      e.status,
+    ]),
+    styles: { fontSize: 7, cellPadding: 1.5 },
+    headStyles: { fillColor: [5, 63, 181] },
+    alternateRowStyles: { fillColor: [244, 246, 249] },
+  })
+
+  const pdfBuffer = Buffer.from(doc.output('arraybuffer'))
+
+  return new NextResponse(new Uint8Array(pdfBuffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="time-report-${safeFilenamePart(report.summary.dateRange.start)}-to-${safeFilenamePart(report.summary.dateRange.end)}.pdf"`,
+    },
   })
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireAuth } from '@/lib/auth'
 import { commonWorkSchema } from '@/lib/validations'
+import { handleApiError } from '@/lib/api'
 
 export async function GET(
   request: NextRequest,
@@ -29,14 +30,7 @@ export async function GET(
 
     return NextResponse.json({ commonWork })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Get common work error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Get common work error:')
   }
 }
 
@@ -78,20 +72,7 @@ export async function PUT(
 
     return NextResponse.json({ commonWork })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json(
-        { error: 'Validation error', details: error },
-        { status: 400 }
-      )
-    }
-    console.error('Update common work error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Update common work error:')
   }
 }
 
@@ -118,13 +99,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Delete common work error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Delete common work error:')
   }
 }

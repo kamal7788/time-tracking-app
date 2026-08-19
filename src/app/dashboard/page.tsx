@@ -1,10 +1,11 @@
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/auth'
-import { getWeekDates, formatDate, formatDuration, getWeekStart, getWeekEnd } from '@/lib/utils'
+import { getWeekBoundsUTC, parseWeekParam, entryDateKey, formatDuration } from '@/lib/utils'
 import DashboardWeekView from '@/components/dashboard-week-view'
 import QuickAddTimeEntry from '@/components/quick-add-time-entry'
 import ClockInOut from '@/components/clock-in-out'
 import Link from 'next/link'
+import { ClockIcon, CalendarIcon, ChartIcon, ChevronLeftIcon, ChevronRightIcon } from '@/components/ui/icons'
 
 export default async function DashboardPage({
   searchParams,
@@ -12,23 +13,22 @@ export default async function DashboardPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
   const session = await getSession()
-  
+
   if (!session) return null
 
   const params = await searchParams
   const weekParam = typeof params.week === 'string' ? params.week : undefined
-  const referenceDate = weekParam ? new Date(weekParam) : new Date()
+  const referenceDate = parseWeekParam(weekParam) || new Date()
 
-  const weekStart = getWeekStart(referenceDate)
-  const weekEnd = getWeekEnd(referenceDate)
+  const { start: weekStart, end: weekEnd } = getWeekBoundsUTC(referenceDate)
 
   const prevWeekDate = new Date(weekStart)
-  prevWeekDate.setDate(prevWeekDate.getDate() - 7)
+  prevWeekDate.setUTCDate(prevWeekDate.getUTCDate() - 7)
   const nextWeekDate = new Date(weekStart)
-  nextWeekDate.setDate(nextWeekDate.getDate() + 7)
+  nextWeekDate.setUTCDate(nextWeekDate.getUTCDate() + 7)
 
-  const prevWeekParam = prevWeekDate.toISOString().split('T')[0]
-  const nextWeekParam = nextWeekDate.toISOString().split('T')[0]
+  const prevWeekParam = entryDateKey(prevWeekDate)
+  const nextWeekParam = entryDateKey(nextWeekDate)
 
   const timeEntries = await prisma.timeEntry.findMany({
     where: {
@@ -69,7 +69,7 @@ export default async function DashboardPage({
 
   const entriesByDay = new Map<string, typeof timeEntries>()
   for (const entry of timeEntries) {
-    const dayKey = entry.date.toISOString().split('T')[0]
+    const dayKey = entryDateKey(entry.date)
     if (!entriesByDay.has(dayKey)) {
       entriesByDay.set(dayKey, [])
     }
@@ -82,14 +82,20 @@ export default async function DashboardPage({
     dayTotals.set(day, entries.reduce((sum: number, e: { duration: number }) => sum + e.duration, 0))
   }
 
-  const weekDates = getWeekDates(referenceDate)
-  const isCurrentWeek = weekStart.toISOString().split('T')[0] === getWeekStart(new Date()).toISOString().split('T')[0]
+  const weekDates: Date[] = []
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart)
+    d.setUTCDate(d.getUTCDate() + i)
+    weekDates.push(d)
+  }
+
+  const isCurrentWeek = entryDateKey(weekStart) === entryDateKey(getWeekBoundsUTC(new Date()).start)
 
   const stats = [
-    { label: 'Total Hours', value: formatDuration(totalMinutes), icon: '⏱' },
-    { label: 'Entries', value: timeEntries.length.toString(), icon: '📋' },
-    { label: 'Days Worked', value: entriesByDay.size.toString(), icon: '📅' },
-    { label: 'Avg/Day', value: entriesByDay.size > 0 ? formatDuration(Math.round(totalMinutes / entriesByDay.size)) : '0h', icon: '📊' },
+    { label: 'Total Hours', value: formatDuration(totalMinutes), Icon: ClockIcon },
+    { label: 'Entries', value: timeEntries.length.toString(), Icon: CalendarIcon },
+    { label: 'Days Worked', value: entriesByDay.size.toString(), Icon: CalendarIcon },
+    { label: 'Avg/Day', value: entriesByDay.size > 0 ? formatDuration(Math.round(totalMinutes / entriesByDay.size)) : '0h', Icon: ChartIcon },
   ]
 
   return (
@@ -97,33 +103,31 @@ export default async function DashboardPage({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-brand-navy tracking-tight">Dashboard</h1>
+          <h1 className="text-2xl font-semibold text-brand-navy tracking-tight">Dashboard</h1>
           <div className="flex items-center gap-3 mt-2">
             <Link
               href={`/dashboard?week=${prevWeekParam}`}
-              className="inline-flex items-center justify-center w-8 h-8 rounded-xl border-2 border-gray-200 bg-white text-brand-gray hover:bg-brand-surface hover:border-gray-300 transition-all duration-200"
+              aria-label="Previous week"
+              className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-brand-border bg-white text-brand-gray hover:bg-brand-surface transition-colors"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
+              <ChevronLeftIcon className="w-4 h-4" />
             </Link>
-            <p className="text-brand-gray font-medium">
-              Week of {formatDate(weekStart)} - {formatDate(weekEnd)}
+            <p className="text-brand-gray font-medium text-sm sm:text-base">
+              Week of {entryDateKey(weekStart)} — {entryDateKey(weekEnd)}
             </p>
             <Link
               href={`/dashboard?week=${nextWeekParam}`}
-              className="inline-flex items-center justify-center w-8 h-8 rounded-xl border-2 border-gray-200 bg-white text-brand-gray hover:bg-brand-surface hover:border-gray-300 transition-all duration-200"
+              aria-label="Next week"
+              className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-brand-border bg-white text-brand-gray hover:bg-brand-surface transition-colors"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
+              <ChevronRightIcon className="w-4 h-4" />
             </Link>
             {!isCurrentWeek && (
               <Link
                 href="/dashboard"
-                className="text-sm text-brand-blue hover:text-brand-blue-dark font-semibold transition-colors"
+                className="text-sm text-brand-blue hover:text-brand-blue-dark font-medium transition-colors"
               >
-                Current Week
+                Current week
               </Link>
             )}
           </div>
@@ -134,14 +138,14 @@ export default async function DashboardPage({
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat) => (
-          <div key={stat.label} className="card group">
+          <div key={stat.label} className="card">
             <div className="card-body flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-brand-blue/10 flex items-center justify-center text-xl group-hover:bg-brand-blue/15 transition-colors">
-                {stat.icon}
+              <div className="w-10 h-10 rounded-lg bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
+                <stat.Icon className="w-5 h-5 text-brand-blue" />
               </div>
-              <div>
-                <p className="text-sm text-brand-gray font-medium">{stat.label}</p>
-                <p className="text-2xl font-bold text-brand-navy tracking-tight">{stat.value}</p>
+              <div className="min-w-0">
+                <p className="text-xs text-brand-gray font-medium uppercase tracking-wide">{stat.label}</p>
+                <p className="text-xl font-semibold text-brand-navy tracking-tight tabular-nums">{stat.value}</p>
               </div>
             </div>
           </div>
@@ -154,8 +158,8 @@ export default async function DashboardPage({
           <ClockInOut projects={projects} />
         </div>
         <div className="lg:col-span-2">
-          <DashboardWeekView 
-            weekDates={weekDates} 
+          <DashboardWeekView
+            weekDates={weekDates}
             entriesByDay={entriesByDay}
             dayTotals={dayTotals}
           />

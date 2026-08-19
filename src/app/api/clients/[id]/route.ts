@@ -4,7 +4,18 @@ import { requireAuth } from '@/lib/auth'
 import { clientSchema } from '@/lib/validations'
 import { createAuditLog, AuditActions, AuditEntities } from '@/lib/audit'
 
-async function authorizeClientAccess(id: string, userId: string, role: string) {
+// Read access: admins + company (non-personal) clients for everyone + own personal clients
+async function authorizeClientRead(id: string, userId: string, role: string) {
+  const client = await prisma.client.findUnique({ where: { id } })
+  if (!client) return null
+  if (role === 'ADMIN') return client
+  if (!client.isPersonal) return client
+  if (client.managerId === userId) return client
+  return null
+}
+
+// Write access: admins manage company clients, users manage only their own personal clients
+async function authorizeClientWrite(id: string, userId: string, role: string) {
   const client = await prisma.client.findUnique({ where: { id } })
   if (!client) return null
   if (role === 'ADMIN' && !client.isPersonal) return client
@@ -20,7 +31,7 @@ export async function GET(
     const session = await requireAuth()
     const { id } = await params
 
-    const client = await authorizeClientAccess(id, session.userId, session.role)
+    const client = await authorizeClientRead(id, session.userId, session.role)
     if (!client) {
       return NextResponse.json(
         { error: 'Client not found' },
@@ -68,7 +79,7 @@ export async function PUT(
     const body = await request.json()
     const validated = clientSchema.parse(body)
 
-    const existingClient = await authorizeClientAccess(id, session.userId, session.role)
+    const existingClient = await authorizeClientWrite(id, session.userId, session.role)
     if (!existingClient) {
       return NextResponse.json(
         { error: 'Client not found' },
@@ -120,7 +131,7 @@ export async function DELETE(
     const session = await requireAuth()
     const { id } = await params
 
-    const existingClient = await authorizeClientAccess(id, session.userId, session.role)
+    const existingClient = await authorizeClientWrite(id, session.userId, session.role)
     if (!existingClient) {
       return NextResponse.json(
         { error: 'Client not found' },

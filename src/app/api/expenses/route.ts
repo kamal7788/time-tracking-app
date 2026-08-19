@@ -3,9 +3,9 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth'
 import { expenseSchema } from '@/lib/validations'
 import { createAuditLog, AuditActions, AuditEntities } from '@/lib/audit'
-import { writeFile, mkdir } from 'fs/promises'
-import { join } from 'path'
-import { randomUUID } from 'crypto'
+import { handleApiError, parseDateParam } from '@/lib/api'
+import { validateReceiptFile, saveReceipt } from '@/lib/uploads'
+import { parseEntryDate } from '@/lib/utils'
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
       userId: session.userId,
     }
 
-    if (status) {
+    if (status && ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED'].includes(status)) {
       where.status = status
     }
 
@@ -27,18 +27,12 @@ export async function GET(request: NextRequest) {
         { date: 'desc' },
         { createdAt: 'desc' },
       ],
+      take: 500,
     })
 
     return NextResponse.json({ expenses })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Get expenses error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Get expenses')
   }
 }
 
@@ -62,24 +56,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const uploadsDir = join(process.cwd(), 'public', 'uploads', 'expenses')
-    await mkdir(uploadsDir, { recursive: true })
+    const buffer = Buffer.from(await receipt.arrayBuffer())
+    const detected = validateReceiptFile(receipt, buffer)
+    if (!detected) {
+      return NextResponse.json(
+        { error: 'Invalid receipt file. Allowed: JPG, PNG, GIF, WebP or PDF up to 5 MB.' },
+        { status: 400 }
+      )
+    }
 
-    const ext = receipt.name.split('.').pop() || 'jpg'
-    const filename = `${randomUUID()}.${ext}`
-    const filepath = join(uploadsDir, filename)
+    const entryDate = parseEntryDate(validated.date)
+    if (!entryDate) {
+      return NextResponse.json({ error: 'Invalid date' }, { status: 400 })
+    }
 
-    const bytes = await receipt.arrayBuffer()
-    await writeFile(filepath, Buffer.from(bytes))
-
-    const receiptPath = `/api/uploads/expenses/${filename}`
+    const receiptPath = await saveReceipt(buffer, detected.ext)
 
     const expense = await prisma.expense.create({
       data: {
         userId: session.userId,
         itemName: validated.itemName,
         amount: validated.amount,
-        date: new Date(validated.date),
+        date: entryDate,
         receiptPath,
         description: validated.description,
         status: 'DRAFT',
@@ -89,11 +87,11 @@ export async function POST(request: NextRequest) {
     await createAuditLog({
       userId: session.userId,
       action: AuditActions.CREATE,
-      entity: AuditEntities.TIME_ENTRY, // Reusing entity type
+      entity: AuditEntities.EXPENSE,
       entityId: expense.id,
       newData: {
         itemName: expense.itemName,
-        amount: expense.amount,
+        amount: expense.amount.toString(),
         date: expense.date,
         receiptPath: expense.receiptPath,
       },
@@ -101,19 +99,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ expense }, { status: 201 })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json(
-        { error: 'Validation error', details: error },
-        { status: 400 }
-      )
-    }
-    console.error('Create expense error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Create expense')
   }
 }

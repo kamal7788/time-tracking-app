@@ -38,11 +38,13 @@ export async function getNotifications(userId: string, unreadOnly = false) {
   })
 }
 
+/** Marks a notification read. Returns false when not found / not owned. */
 export async function markNotificationRead(notificationId: string, userId: string) {
-  return prisma.notification.update({
+  const result = await prisma.notification.updateMany({
     where: { id: notificationId, userId },
     data: { isRead: true },
   })
+  return result.count > 0
 }
 
 export async function markAllNotificationsRead(userId: string) {

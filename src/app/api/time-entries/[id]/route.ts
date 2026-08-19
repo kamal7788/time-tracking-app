@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getSession, requireAuth } from '@/lib/auth'
+import { requireAuth } from '@/lib/auth'
 import { timeEntrySchema } from '@/lib/validations'
 import { createAuditLog, AuditActions, AuditEntities } from '@/lib/audit'
-import { calculateDuration, timeStringToMinutes, formatTime } from '@/lib/utils'
+import { calculateDuration, timeStringToMinutes, parseEntryDate, timeToStoredDate } from '@/lib/utils'
+import { handleApiError } from '@/lib/api'
+import { assertProjectAccess } from '@/lib/projects'
+import { findTimeEntryOverlap } from '@/lib/time-entries'
 
 export async function GET(
   request: NextRequest,
@@ -36,14 +39,7 @@ export async function GET(
 
     return NextResponse.json({ timeEntry })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Get time entry error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Get time entry')
   }
 }
 
@@ -78,41 +74,41 @@ export async function PUT(
       )
     }
 
+    const access = await assertProjectAccess(validated.projectId, session)
+    if (!access.ok) {
+      return NextResponse.json({ error: access.error }, { status: access.status })
+    }
+
+    const entryDate = parseEntryDate(validated.date)
+    const startTime = timeToStoredDate(validated.startTime)
+    const endTime = timeToStoredDate(validated.endTime)
+    if (!entryDate || !startTime || !endTime) {
+      return NextResponse.json({ error: 'Invalid date or time' }, { status: 400 })
+    }
+
     const duration = calculateDuration(validated.startTime, validated.endTime)
-
-    // Check for overlapping entries on the same date (excluding self)
-    const entryDate = new Date(validated.date)
     const newStartMinutes = timeStringToMinutes(validated.startTime)
-    const newEndMinutes = timeStringToMinutes(validated.endTime)
+    let newEndMinutes = timeStringToMinutes(validated.endTime)
+    if (newEndMinutes <= newStartMinutes) newEndMinutes += 1440 // overnight
 
-    const existingEntries = await prisma.timeEntry.findMany({
-      where: {
-        userId: session.userId,
-        date: entryDate,
-        id: { not: id },
-        status: { not: 'REJECTED' },
-      },
-    })
-
-    for (const existing of existingEntries) {
-      const existStartMinutes = timeStringToMinutes(formatTime(existing.startTime))
-      const existEndMinutes = timeStringToMinutes(formatTime(existing.endTime))
-      
-      if (newStartMinutes < existEndMinutes && existStartMinutes < newEndMinutes) {
-        return NextResponse.json(
-          { error: `Time entry overlaps with existing entry from ${formatTime(existing.startTime)} to ${formatTime(existing.endTime)}` },
-          { status: 400 }
-        )
-      }
+    const overlap = await findTimeEntryOverlap(
+      session.userId,
+      entryDate,
+      newStartMinutes,
+      newEndMinutes,
+      id
+    )
+    if (overlap.overlaps) {
+      return NextResponse.json({ error: overlap.message }, { status: 400 })
     }
 
     const timeEntry = await prisma.timeEntry.update({
       where: { id },
       data: {
         projectId: validated.projectId,
-        date: new Date(validated.date),
-        startTime: new Date(`1970-01-01T${validated.startTime}:00`),
-        endTime: new Date(`1970-01-01T${validated.endTime}:00`),
+        date: entryDate,
+        startTime,
+        endTime,
         duration,
         description: validated.description,
       },
@@ -133,16 +129,14 @@ export async function PUT(
       oldData: {
         projectId: existingEntry.projectId,
         date: existingEntry.date,
-        startTime: existingEntry.startTime,
-        endTime: existingEntry.endTime,
         duration: existingEntry.duration,
         description: existingEntry.description,
       },
       newData: {
         projectId: timeEntry.projectId,
         date: timeEntry.date,
-        startTime: timeEntry.startTime,
-        endTime: timeEntry.endTime,
+        startTime: validated.startTime,
+        endTime: validated.endTime,
         duration: timeEntry.duration,
         description: timeEntry.description,
       },
@@ -150,20 +144,7 @@ export async function PUT(
 
     return NextResponse.json({ timeEntry })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json(
-        { error: 'Validation error', details: error },
-        { status: 400 }
-      )
-    }
-    console.error('Update time entry error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Update time entry')
   }
 }
 
@@ -213,8 +194,6 @@ export async function DELETE(
       oldData: {
         projectId: existingEntry.projectId,
         date: existingEntry.date,
-        startTime: existingEntry.startTime,
-        endTime: existingEntry.endTime,
         duration: existingEntry.duration,
         description: existingEntry.description,
       },
@@ -222,13 +201,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Delete time entry error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Delete time entry')
   }
 }

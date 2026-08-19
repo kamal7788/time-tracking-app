@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireAuth } from '@/lib/auth'
 import { createAuditLog, AuditActions } from '@/lib/audit'
+import { handleApiError } from '@/lib/api'
 
 export async function PATCH(
   request: NextRequest,
@@ -44,14 +45,7 @@ export async function PATCH(
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Cancel clock session error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Cancel clock session error:')
   }
 }
 
@@ -81,13 +75,6 @@ export async function GET(
 
     return NextResponse.json({ clockSession })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Get clock session error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Get clock session error:')
   }
 }

@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/auth'
 import { expenseApprovalSchema } from '@/lib/validations'
 import { createAuditLog, AuditActions, AuditEntities } from '@/lib/audit'
 import { sendNotification } from '@/lib/notifications'
+import { handleApiError } from '@/lib/api'
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = {}
 
-    if (status) {
+    if (status && ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED'].includes(status)) {
       where.status = status
     }
 
@@ -33,18 +34,12 @@ export async function GET(request: NextRequest) {
         { date: 'desc' },
         { createdAt: 'desc' },
       ],
+      take: 500,
     })
 
     return NextResponse.json({ expenses })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Get admin expenses error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Get admin expenses')
   }
 }
 
@@ -75,11 +70,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const validIds = expenses.map((e) => e.id)
     const now = new Date()
     const newStatus = action === 'approve' ? 'APPROVED' : 'REJECTED'
 
+    // Only flip rows that are still SUBMITTED — prevents smuggled IDs of other statuses
     await prisma.expense.updateMany({
-      where: { id: { in: expenseIds } },
+      where: { id: { in: validIds }, status: 'SUBMITTED' },
       data: {
         status: newStatus,
         [action === 'approve' ? 'approvedAt' : 'rejectedAt']: now,
@@ -88,11 +85,11 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    for (const expense of expenses) {
+    const sideEffects = expenses.map(async (expense) => {
       await createAuditLog({
         userId: session.userId,
         action: action === 'approve' ? AuditActions.APPROVE : AuditActions.REJECT,
-        entity: AuditEntities.TIME_ENTRY,
+        entity: AuditEntities.EXPENSE,
         entityId: expense.id,
         oldData: { status: 'SUBMITTED' },
         newData: {
@@ -110,26 +107,15 @@ export async function POST(request: NextRequest) {
         senderId: session.userId,
         metadata: { expenseId: expense.id, action },
       })
-    }
+    })
+
+    await Promise.allSettled(sideEffects)
 
     return NextResponse.json({
       success: true,
       processedCount: expenses.length,
     })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json(
-        { error: 'Validation error', details: error },
-        { status: 400 }
-      )
-    }
-    console.error('Admin expense approval error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Admin expense approval')
   }
 }

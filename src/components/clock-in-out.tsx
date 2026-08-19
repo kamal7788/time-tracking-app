@@ -1,7 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { formatTime, formatDuration } from '@/lib/utils'
+import { useToast } from '@/components/ui/toast'
+import { ConfirmDialog } from '@/components/ui/modal'
+import { ClockIcon } from '@/components/ui/icons'
 
 interface ClockInOutProps {
   projects: Array<{
@@ -12,6 +16,8 @@ interface ClockInOutProps {
 }
 
 export default function ClockInOut({ projects }: ClockInOutProps) {
+  const router = useRouter()
+  const toast = useToast()
   const [activeSession, setActiveSession] = useState<{
     id: string
     clockIn: string
@@ -23,10 +29,12 @@ export default function ClockInOut({ projects }: ClockInOutProps) {
   const [selectedProject, setSelectedProject] = useState<string>('')
   const [description, setDescription] = useState('')
   const [elapsedTime, setElapsedTime] = useState(0)
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
 
   useEffect(() => {
     fetchActiveSession()
-    const interval = setInterval(fetchActiveSession, 5000)
+    const interval = setInterval(fetchActiveSession, 15000)
     return () => clearInterval(interval)
   }, [])
 
@@ -84,9 +92,11 @@ export default function ClockInOut({ projects }: ClockInOutProps) {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
+      toast.success('Clocked in')
       fetchActiveSession()
+      router.refresh()
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to clock in')
+      toast.error(error instanceof Error ? error.message : 'Failed to clock in')
     } finally {
       setIsLoading(false)
     }
@@ -102,11 +112,14 @@ export default function ClockInOut({ projects }: ClockInOutProps) {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
+      toast.success('Clocked out')
+      if (data.warning) toast.info(data.warning)
       setActiveSession(null)
       setSelectedProject('')
       setDescription('')
+      router.refresh()
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to clock out')
+      toast.error(error instanceof Error ? error.message : 'Failed to clock out')
     } finally {
       setIsLoading(false)
     }
@@ -114,7 +127,7 @@ export default function ClockInOut({ projects }: ClockInOutProps) {
 
   const handleCancel = async () => {
     if (!activeSession) return
-    if (!confirm('Cancel this clock-in session?')) return
+    setIsCancelling(true)
     try {
       const res = await fetch(`/api/clock-sessions/${activeSession.id}`, {
         method: 'PATCH',
@@ -122,19 +135,26 @@ export default function ClockInOut({ projects }: ClockInOutProps) {
         body: JSON.stringify({ action: 'cancel' }),
       })
       if (!res.ok) throw new Error('Failed to cancel')
+      toast.success('Session cancelled')
       setActiveSession(null)
+      setCancelOpen(false)
+      router.refresh()
     } catch (error) {
-      alert('Failed to cancel session')
+      toast.error(error instanceof Error ? error.message : 'Failed to cancel session')
+    } finally {
+      setIsCancelling(false)
     }
   }
+
+  const activeProject = activeSession?.projectId
+    ? projects.find((p) => p.id === activeSession.projectId)
+    : undefined
 
   return (
     <div className="card h-full">
       <div className="card-header flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-brand-blue/10 flex items-center justify-center">
-          <svg className="w-5 h-5 text-brand-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+          <ClockIcon className="w-5 h-5 text-brand-blue" strokeWidth={1.5} />
         </div>
         <h2 className="text-lg font-bold text-brand-navy">Clock In / Out</h2>
       </div>
@@ -142,8 +162,9 @@ export default function ClockInOut({ projects }: ClockInOutProps) {
         {!activeSession ? (
           <div className="space-y-4">
             <div>
-              <label className="label">Project (Optional)</label>
+              <label htmlFor="clock-project" className="label">Project (Optional)</label>
               <select
+                id="clock-project"
                 value={selectedProject}
                 onChange={(e) => setSelectedProject(e.target.value)}
                 className="input"
@@ -157,8 +178,9 @@ export default function ClockInOut({ projects }: ClockInOutProps) {
               </select>
             </div>
             <div>
-              <label className="label">Description (Optional)</label>
+              <label htmlFor="clock-description" className="label">Description (Optional)</label>
               <input
+                id="clock-description"
                 type="text"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -167,13 +189,14 @@ export default function ClockInOut({ projects }: ClockInOutProps) {
               />
             </div>
             <button
+              type="button"
               onClick={handleClockIn}
               disabled={isLoading}
               className="btn-primary w-full py-3.5 text-base"
             >
               {isLoading ? (
                 <span className="flex items-center gap-2">
-                  <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                  <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
@@ -181,10 +204,7 @@ export default function ClockInOut({ projects }: ClockInOutProps) {
                 </span>
               ) : (
                 <span className="flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+                  <ClockIcon className="w-5 h-5" />
                   Clock In
                 </span>
               )}
@@ -193,7 +213,7 @@ export default function ClockInOut({ projects }: ClockInOutProps) {
         ) : (
           <div className="space-y-4">
             {/* Timer display */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-blue to-brand-blue-dark p-6 text-white">
+            <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-brand-blue to-brand-blue-dark p-6 text-white">
               <div className="absolute inset-0 bg-white/5" />
               <div className="relative">
                 <div className="flex items-center justify-between mb-4">
@@ -208,8 +228,9 @@ export default function ClockInOut({ projects }: ClockInOutProps) {
                 </div>
                 {activeSession.projectId && (
                   <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/15 text-sm font-medium">
-                    {projects.find(p => p.id === activeSession.projectId)?.client.name} - 
-                    {projects.find(p => p.id === activeSession.projectId)?.name}
+                    {activeProject
+                      ? `${activeProject.client.name} - ${activeProject.name}`
+                      : 'Unknown project'}
                   </div>
                 )}
                 {activeSession.description && (
@@ -219,6 +240,7 @@ export default function ClockInOut({ projects }: ClockInOutProps) {
             </div>
             <div className="flex gap-3">
               <button
+                type="button"
                 onClick={handleClockOut}
                 disabled={isLoading}
                 className="btn-danger flex-1 py-3"
@@ -226,7 +248,8 @@ export default function ClockInOut({ projects }: ClockInOutProps) {
                 {isLoading ? 'Clocking Out...' : 'Clock Out'}
               </button>
               <button
-                onClick={handleCancel}
+                type="button"
+                onClick={() => setCancelOpen(true)}
                 disabled={isLoading}
                 className="btn-outline flex-1 py-3"
               >
@@ -236,6 +259,17 @@ export default function ClockInOut({ projects }: ClockInOutProps) {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        onConfirm={handleCancel}
+        title="Cancel Session"
+        message="Cancel this clock-in session? Elapsed time will not be saved."
+        confirmLabel="Cancel Session"
+        destructive
+        loading={isCancelling}
+      />
     </div>
   )
 }

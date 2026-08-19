@@ -1,9 +1,11 @@
 #!/bin/sh
 set -e
 
-# Run database migrations and seed
-./node_modules/.bin/prisma db push --accept-data-loss --skip-generate
-./node_modules/.bin/tsx prisma/seed.ts
+echo "Running database migrations..."
+./node_modules/.bin/prisma migrate deploy
 
-# Start the application
+echo "Seeding database (idempotent)..."
+./node_modules/.bin/tsx prisma/seed.ts || echo "Seed skipped/failed (non-fatal)"
+
+echo "Starting application..."
 exec node server.js

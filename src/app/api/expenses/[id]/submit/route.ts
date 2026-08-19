@@ -44,7 +44,7 @@ export async function POST(
     await createAuditLog({
       userId: session.userId,
       action: AuditActions.SUBMIT,
-      entity: AuditEntities.TIME_ENTRY,
+      entity: AuditEntities.EXPENSE,
       entityId: expense.id,
       oldData: { status: 'DRAFT' },
       newData: { status: 'SUBMITTED', submittedAt: new Date() },

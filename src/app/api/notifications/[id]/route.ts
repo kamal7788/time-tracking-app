@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, requireAuth } from '@/lib/auth'
 import { markNotificationRead } from '@/lib/notifications'
+import { handleApiError } from '@/lib/api'
 
 export async function PATCH(
   request: NextRequest,
@@ -13,19 +14,15 @@ export async function PATCH(
     const { action } = body
 
     if (action === 'markRead') {
-      await markNotificationRead(id, session.userId)
+      const found = await markNotificationRead(id, session.userId)
+      if (!found) {
+        return NextResponse.json({ error: 'Notification not found' }, { status: 404 })
+      }
       return NextResponse.json({ success: true })
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Notification update error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Notification update error:')
   }
 }

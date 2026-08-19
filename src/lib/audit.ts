@@ -52,4 +52,8 @@ export const AuditEntities = {
   PROJECT: 'Project',
   NOTIFICATION: 'Notification',
   EXPENSE: 'Expense',
+  LEAVE_REQUEST: 'LeaveRequest',
+  LEAVE_TYPE: 'LeaveType',
+  LEAVE_BALANCE: 'LeaveBalance',
+  CLOCK_SESSION: 'ClockSession',
 } as const

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireAuth } from '@/lib/auth'
 import { commonWorkSchema } from '@/lib/validations'
+import { handleApiError } from '@/lib/api'
 
 export async function GET() {
   try {
@@ -21,14 +22,7 @@ export async function GET() {
 
     return NextResponse.json({ commonWorks })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Get common works error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Get common works error:')
   }
 }
 
@@ -57,19 +51,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ commonWork }, { status: 201 })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json(
-        { error: 'Validation error', details: error },
-        { status: 400 }
-      )
-    }
-    console.error('Create common work error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Create common work error:')
   }
 }

@@ -1,33 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import nodemailer from 'nodemailer'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
 import { emailSettingsSchema } from '@/lib/validations'
+import { handleApiError } from '@/lib/api'
+import { resolveEmailConfig } from '@/lib/email'
 
 export async function GET() {
   try {
     await requireAdmin()
 
-    const settings = await prisma.emailSettings.findFirst()
+    // Global settings: single row, most recently updated wins
+    const settings = await prisma.emailSettings.findFirst({
+      orderBy: { updatedAt: 'desc' },
+    })
 
     if (!settings) {
       return NextResponse.json({ settings: null })
     }
 
-    // Don't return password
+    // Don't return password — only whether one is stored
     const { smtpPass, ...safeSettings } = settings
-    return NextResponse.json({ settings: safeSettings })
+    return NextResponse.json({
+      settings: { ...safeSettings, hasPassword: Boolean(smtpPass) },
+    })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Get email settings error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Get email settings')
   }
 }
 
@@ -37,46 +36,74 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const validated = emailSettingsSchema.parse(body)
 
-    const settings = await prisma.emailSettings.upsert({
-      where: { userId: session.userId },
-      update: {
-        smtpHost: validated.smtpHost,
-        smtpPort: validated.smtpPort,
-        smtpUser: validated.smtpUser,
-        smtpPass: validated.smtpPass,
-        fromEmail: validated.fromEmail,
-        fromName: validated.fromName,
-      },
-      create: {
-        userId: session.userId,
-        smtpHost: validated.smtpHost,
-        smtpPort: validated.smtpPort,
-        smtpUser: validated.smtpUser,
-        smtpPass: validated.smtpPass,
-        fromEmail: validated.fromEmail,
-        fromName: validated.fromName,
-      },
+    const existing = await prisma.emailSettings.findFirst({
+      orderBy: { updatedAt: 'desc' },
     })
 
-    const { smtpPass, ...safeSettings } = settings
-    return NextResponse.json({ settings: safeSettings })
+    // Blank password keeps the stored one
+    const smtpPass =
+      validated.smtpPass && validated.smtpPass.length > 0
+        ? validated.smtpPass
+        : existing?.smtpPass || null
+
+    const data = {
+      smtpHost: validated.smtpHost,
+      smtpPort: validated.smtpPort,
+      smtpUser: validated.smtpUser,
+      smtpPass,
+      fromEmail: validated.fromEmail,
+      fromName: validated.fromName,
+    }
+
+    const settings = existing
+      ? await prisma.emailSettings.update({ where: { id: existing.id }, data })
+      : await prisma.emailSettings.create({ data: { ...data, userId: session.userId } })
+
+    const { smtpPass: _omit, ...safeSettings } = settings
+    return NextResponse.json({
+      settings: { ...safeSettings, hasPassword: Boolean(smtpPass) },
+    })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (error instanceof Error && error.name === 'ZodError') {
+    return handleApiError(error, 'Email settings')
+  }
+}
+
+const testEmailSchema = z.object({
+  to: z.string().email('Invalid recipient email'),
+})
+
+/** Sends a test email using the resolved configuration. */
+export async function PUT(request: NextRequest) {
+  try {
+    await requireAdmin()
+    const body = await request.json()
+    const { to } = testEmailSchema.parse(body)
+
+    const config = await resolveEmailConfig()
+    if (!config) {
       return NextResponse.json(
-        { error: 'Validation error', details: error },
+        { error: 'Email is not configured. Save SMTP settings first.' },
         { status: 400 }
       )
     }
-    console.error('Email settings error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+
+    const transporter = nodemailer.createTransport({
+      host: config.host,
+      port: config.port,
+      secure: config.port === 465,
+      auth: { user: config.user, pass: config.pass },
+    })
+
+    await transporter.sendMail({
+      from: `"${config.fromName.replace(/"/g, '')}" <${config.fromEmail}>`,
+      to,
+      subject: 'Test email from Time Tracking App',
+      text: 'If you received this, your SMTP settings are working.',
+      html: '<p>If you received this, your <strong>SMTP settings</strong> are working.</p>',
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    return handleApiError(error, 'Test email')
   }
 }

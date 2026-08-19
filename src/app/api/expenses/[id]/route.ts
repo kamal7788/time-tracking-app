@@ -3,9 +3,9 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth'
 import { expenseSchema } from '@/lib/validations'
 import { createAuditLog, AuditActions, AuditEntities } from '@/lib/audit'
-import { writeFile, mkdir, unlink } from 'fs/promises'
-import { join } from 'path'
-import { randomUUID } from 'crypto'
+import { handleApiError } from '@/lib/api'
+import { validateReceiptFile, saveReceipt, deleteReceipt } from '@/lib/uploads'
+import { parseEntryDate } from '@/lib/utils'
 
 export async function GET(
   request: NextRequest,
@@ -16,10 +16,7 @@ export async function GET(
     const { id } = await params
 
     const expense = await prisma.expense.findFirst({
-      where: {
-        id,
-        userId: session.userId,
-      },
+      where: session.role === 'ADMIN' ? { id } : { id, userId: session.userId },
     })
 
     if (!expense) {
@@ -31,14 +28,7 @@ export async function GET(
 
     return NextResponse.json({ expense })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Get expense error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Get expense')
   }
 }
 
@@ -72,7 +62,6 @@ export async function PUT(
     }
 
     const formData = await request.formData()
-    let receiptPath = existingExpense.receiptPath
 
     const itemName = formData.get('itemName') as string
     const amount = parseFloat(formData.get('amount') as string)
@@ -82,82 +71,65 @@ export async function PUT(
 
     const validated = expenseSchema.parse({ itemName, amount, date, description })
 
-    if (!receipt || receipt.size === 0) {
-      return NextResponse.json(
-        { error: 'Receipt image is required' },
-        { status: 400 }
-      )
+    const entryDate = parseEntryDate(validated.date)
+    if (!entryDate) {
+      return NextResponse.json({ error: 'Invalid date' }, { status: 400 })
     }
 
-    // Delete old receipt if exists
-    if (existingExpense.receiptPath) {
-      const oldFilename = existingExpense.receiptPath.split('/').pop()
-      if (oldFilename) {
-        const oldPath = join(process.cwd(), 'public', 'uploads', 'expenses', oldFilename)
-        try {
-          await unlink(oldPath)
-        } catch {
-          // File might not exist, ignore error
-        }
+    // Receipt is optional on edit — only replace when a new file is provided
+    let receiptPath = existingExpense.receiptPath
+    let oldReceiptPath: string | null = null
+
+    if (receipt && receipt.size > 0) {
+      const buffer = Buffer.from(await receipt.arrayBuffer())
+      const detected = validateReceiptFile(receipt, buffer)
+      if (!detected) {
+        return NextResponse.json(
+          { error: 'Invalid receipt file. Allowed: JPG, PNG, GIF, WebP or PDF up to 5 MB.' },
+          { status: 400 }
+        )
       }
+      // Write the new receipt BEFORE touching the old one
+      receiptPath = await saveReceipt(buffer, detected.ext)
+      oldReceiptPath = existingExpense.receiptPath
     }
-
-    const uploadsDir = join(process.cwd(), 'public', 'uploads', 'expenses')
-    await mkdir(uploadsDir, { recursive: true })
-
-    const ext = receipt.name.split('.').pop() || 'jpg'
-    const filename = `${randomUUID()}.${ext}`
-    const filepath = join(uploadsDir, filename)
-
-    const bytes = await receipt.arrayBuffer()
-    await writeFile(filepath, Buffer.from(bytes))
-
-    receiptPath = `/api/uploads/expenses/${filename}`
 
     const expense = await prisma.expense.update({
       where: { id },
       data: {
         itemName: validated.itemName,
         amount: validated.amount,
-        date: new Date(validated.date),
+        date: entryDate,
         receiptPath,
         description: validated.description,
       },
     })
 
+    // Only delete the old receipt after the update succeeded
+    if (oldReceiptPath) {
+      await deleteReceipt(oldReceiptPath)
+    }
+
     await createAuditLog({
       userId: session.userId,
       action: AuditActions.UPDATE,
-      entity: AuditEntities.TIME_ENTRY,
+      entity: AuditEntities.EXPENSE,
       entityId: expense.id,
       oldData: {
         itemName: existingExpense.itemName,
-        amount: existingExpense.amount,
+        amount: existingExpense.amount.toString(),
         date: existingExpense.date,
       },
       newData: {
         itemName: expense.itemName,
-        amount: expense.amount,
+        amount: expense.amount.toString(),
         date: expense.date,
       },
     })
 
     return NextResponse.json({ expense })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json(
-        { error: 'Validation error', details: error },
-        { status: 400 }
-      )
-    }
-    console.error('Update expense error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Update expense')
   }
 }
 
@@ -197,42 +169,23 @@ export async function DELETE(
       )
     }
 
-    // Delete receipt file if exists
-    if (existingExpense.receiptPath) {
-      const filename = existingExpense.receiptPath.split('/').pop()
-      if (filename) {
-        const receiptPath = join(process.cwd(), 'public', 'uploads', 'expenses', filename)
-        try {
-          await unlink(receiptPath)
-        } catch {
-          // File might not exist, ignore error
-        }
-      }
-    }
-
     await prisma.expense.delete({ where: { id } })
+    await deleteReceipt(existingExpense.receiptPath)
 
     await createAuditLog({
       userId: session.userId,
       action: AuditActions.DELETE,
-      entity: AuditEntities.TIME_ENTRY,
+      entity: AuditEntities.EXPENSE,
       entityId: id,
       oldData: {
         itemName: existingExpense.itemName,
-        amount: existingExpense.amount,
+        amount: existingExpense.amount.toString(),
         date: existingExpense.date,
       },
     })
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    console.error('Delete expense error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Delete expense')
   }
 }

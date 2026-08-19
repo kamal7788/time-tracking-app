@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAdmin, getSession } from '@/lib/auth'
 import { createAuditLog, AuditActions, AuditEntities } from '@/lib/audit'
 import { z } from 'zod'
+import { handleApiError } from '@/lib/api'
 
 const leaveTypeSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
@@ -69,22 +70,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ leaveType }, { status: 201 })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json(
-        { error: 'Validation error', details: error },
-        { status: 400 }
-      )
-    }
-    console.error('Create leave type error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Create leave type error:')
   }
 }

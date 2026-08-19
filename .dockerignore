@@ -1,0 +1,32 @@
+# Dependencies (installed fresh inside the image)
+node_modules
+
+# Build output
+.next
+
+# VCS / IDE
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+# Env files (injected at runtime, never baked into the image)
+.env
+.env.local
+.env.*.local
+
+# Docs / misc
+README.md
+README_NODE_REQUIREMENT.md
+*.log
+tsconfig.tsbuildinfo
+
+# Local uploads (runtime data — use a volume)
+public/uploads
+
+# Docker files themselves
+Dockerfile
+docker-compose.yml
+docker-entrypoint.sh
+.dockerignore

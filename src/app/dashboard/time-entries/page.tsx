@@ -1,8 +1,9 @@
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/auth'
-import { getWeekStart, getWeekEnd, formatDate } from '@/lib/utils'
+import { getWeekBoundsUTC, parseWeekParam, entryDateKey } from '@/lib/utils'
 import TimeEntriesList from '@/components/time-entries-list'
 import Link from 'next/link'
+import { ChevronLeftIcon, ChevronRightIcon } from '@/components/ui/icons'
 
 export default async function TimeEntriesPage({
   searchParams,
@@ -14,18 +15,17 @@ export default async function TimeEntriesPage({
 
   const params = await searchParams
   const weekParam = typeof params.week === 'string' ? params.week : undefined
-  const referenceDate = weekParam ? new Date(weekParam) : new Date()
+  const referenceDate = parseWeekParam(weekParam) || new Date()
 
-  const weekStart = getWeekStart(referenceDate)
-  const weekEnd = getWeekEnd(referenceDate)
+  const { start: weekStart, end: weekEnd } = getWeekBoundsUTC(referenceDate)
 
   const prevWeekDate = new Date(weekStart)
-  prevWeekDate.setDate(prevWeekDate.getDate() - 7)
+  prevWeekDate.setUTCDate(prevWeekDate.getUTCDate() - 7)
   const nextWeekDate = new Date(weekStart)
-  nextWeekDate.setDate(nextWeekDate.getDate() + 7)
+  nextWeekDate.setUTCDate(nextWeekDate.getUTCDate() + 7)
 
-  const prevWeekParam = prevWeekDate.toISOString().split('T')[0]
-  const nextWeekParam = nextWeekDate.toISOString().split('T')[0]
+  const prevWeekParam = entryDateKey(prevWeekDate)
+  const nextWeekParam = entryDateKey(nextWeekDate)
 
   const timeEntries = await prisma.timeEntry.findMany({
     where: {
@@ -69,7 +69,7 @@ export default async function TimeEntriesPage({
       userId: session.userId,
       clockIn: {
         gte: weekStart,
-        lte: weekEnd,
+        lte: new Date(weekEnd.getTime() + 24 * 60 * 60 * 1000),
       },
     },
     include: {
@@ -78,52 +78,50 @@ export default async function TimeEntriesPage({
     orderBy: { clockIn: 'desc' },
   })
 
-  const isCurrentWeek = weekStart.toISOString().split('T')[0] === getWeekStart(new Date()).toISOString().split('T')[0]
+  const isCurrentWeek = entryDateKey(weekStart) === entryDateKey(getWeekBoundsUTC(new Date()).start)
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-brand-navy tracking-tight">Time Entries</h1>
+          <h1 className="text-2xl font-semibold text-brand-navy tracking-tight">Time Entries</h1>
           <div className="flex items-center gap-3 mt-2">
             <Link
               href={`/dashboard/time-entries?week=${prevWeekParam}`}
-              className="inline-flex items-center justify-center w-8 h-8 rounded-xl border-2 border-gray-200 bg-white text-brand-gray hover:bg-brand-surface hover:border-gray-300 transition-all duration-200"
+              aria-label="Previous week"
+              className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-brand-border bg-white text-brand-gray hover:bg-brand-surface transition-colors"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
+              <ChevronLeftIcon className="w-4 h-4" />
             </Link>
-            <p className="text-brand-gray font-medium">
-              Week of {formatDate(weekStart)} - {formatDate(weekEnd)}
+            <p className="text-brand-gray font-medium text-sm sm:text-base">
+              Week of {entryDateKey(weekStart)} — {entryDateKey(weekEnd)}
             </p>
             <Link
               href={`/dashboard/time-entries?week=${nextWeekParam}`}
-              className="inline-flex items-center justify-center w-8 h-8 rounded-xl border-2 border-gray-200 bg-white text-brand-gray hover:bg-brand-surface hover:border-gray-300 transition-all duration-200"
+              aria-label="Next week"
+              className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-brand-border bg-white text-brand-gray hover:bg-brand-surface transition-colors"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
+              <ChevronRightIcon className="w-4 h-4" />
             </Link>
             {!isCurrentWeek && (
               <Link
                 href="/dashboard/time-entries"
-                className="text-sm text-brand-blue hover:text-brand-blue-dark font-semibold transition-colors"
+                className="text-sm text-brand-blue hover:text-brand-blue-dark font-medium transition-colors"
               >
-                Current Week
+                Current week
               </Link>
             )}
           </div>
         </div>
       </div>
 
-      <TimeEntriesList 
-        timeEntries={timeEntries} 
+      <TimeEntriesList
+        timeEntries={timeEntries}
         clockSessions={clockSessions}
         projects={projects}
         commonWorks={commonWorks}
-        weekStart={weekStart.toISOString()}
-        weekEnd={weekEnd.toISOString()}
+        weekStart={entryDateKey(weekStart)}
+        weekEnd={entryDateKey(weekEnd)}
       />
     </div>
   )
