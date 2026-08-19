@@ -28,5 +28,4 @@ public/uploads
 # Docker files themselves
 Dockerfile
 docker-compose.yml
-docker-entrypoint.sh
 .dockerignore
