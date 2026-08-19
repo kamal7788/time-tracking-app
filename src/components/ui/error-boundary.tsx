@@ -139,3 +139,4 @@ function DefaultErrorFallback({ error, reset }: { error: Error; reset: () => voi
 }
 
 export default ErrorBoundary
+
