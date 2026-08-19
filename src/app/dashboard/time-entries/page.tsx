@@ -105,6 +105,28 @@ export default async function TimeEntriesPage({
     orderBy: { clockIn: 'desc' },
   })
 
+  interface ClockSessionTransformed {
+    id: string
+    clockIn: string
+    clockOut: string | null
+    duration: number | null
+    description: string | null
+    status: string
+    project: { name: string; client: { name: string } } | null
+  }
+
+  const transformedClockSessions: ClockSessionTransformed[] = clockSessions.map((session) => ({
+    id: session.id,
+    clockIn: session.clockIn.toISOString(),
+    clockOut: session.clockOut ? session.clockOut.toISOString() : null,
+    duration: session.duration,
+    description: session.description,
+    status: session.status,
+    project: session.project
+      ? { name: session.project.name, client: { name: session.project.client.name } }
+      : null,
+  }))
+
   const isCurrentWeek = entryDateKey(weekStart) === entryDateKey(getWeekBoundsUTC(new Date()).start)
 
   return (
@@ -144,7 +166,7 @@ export default async function TimeEntriesPage({
 
       <TimeEntriesList
         timeEntries={transformedTimeEntries}
-        clockSessions={clockSessions}
+        clockSessions={transformedClockSessions}
         projects={projects}
         commonWorks={commonWorks}
         weekStart={entryDateKey(weekStart)}
