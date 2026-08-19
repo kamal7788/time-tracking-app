@@ -40,7 +40,7 @@ services:
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
       SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "${APP_PORT:-4545}:3000"
     volumes:
       - uploads_data:/app/public/uploads
     depends_on:
