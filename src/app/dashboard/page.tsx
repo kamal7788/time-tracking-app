@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/auth'
-import { getWeekBoundsUTC, parseWeekParam, entryDateKey, formatDuration } from '@/lib/utils'
+import { getWeekBoundsUTC, parseWeekParam, entryDateKey, formatDuration, storedTimeToHHMM } from '@/lib/utils'
 import DashboardWeekView from '@/components/dashboard-week-view'
 import QuickAddTimeEntry from '@/components/quick-add-time-entry'
 import ClockInOut from '@/components/clock-in-out'
@@ -90,8 +90,8 @@ export default async function DashboardPage({
     entriesByDay.get(dayKey)!.push({
       id: entry.id,
       date: entryDateKey(entry.date),
-      startTime: entry.startTime,
-      endTime: entry.endTime,
+      startTime: storedTimeToHHMM(entry.startTime),
+      endTime: storedTimeToHHMM(entry.endTime),
       duration: entry.duration,
       description: entry.description,
       status: entry.status,
