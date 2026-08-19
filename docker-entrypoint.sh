@@ -1,8 +1,15 @@
 #!/bin/sh
 set -e
 
-echo "Running database migrations..."
-./node_modules/.bin/prisma migrate deploy
+echo "Checking database migrations..."
+if [ -d "prisma/migrations" ] && [ "$(ls -A prisma/migrations)" ]; then
+  echo "Running existing migrations..."
+  ./node_modules/.bin/prisma migrate deploy
+else
+  echo "No migrations found, creating initial migration..."
+  ./node_modules/.bin/prisma migrate dev --name init --create-only
+  ./node_modules/.bin/prisma migrate deploy
+fi
 
 echo "Seeding database (idempotent)..."
 ./node_modules/.bin/tsx prisma/seed.ts || echo "Seed skipped/failed (non-fatal)"
