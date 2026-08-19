@@ -67,13 +67,39 @@ export default async function DashboardPage({
     orderBy: { name: 'asc' },
   })
 
-  const entriesByDay = new Map<string, typeof timeEntries>()
+  interface DashboardEntry {
+    id: string
+    date: string
+    startTime: string
+    endTime: string
+    duration: number
+    description: string | null
+    status: string
+    project: {
+      name: string
+      client: { name: string }
+    }
+  }
+
+  const entriesByDay = new Map<string, DashboardEntry[]>()
   for (const entry of timeEntries) {
     const dayKey = entryDateKey(entry.date)
     if (!entriesByDay.has(dayKey)) {
       entriesByDay.set(dayKey, [])
     }
-    entriesByDay.get(dayKey)!.push(entry)
+    entriesByDay.get(dayKey)!.push({
+      id: entry.id,
+      date: entryDateKey(entry.date),
+      startTime: entry.startTime,
+      endTime: entry.endTime,
+      duration: entry.duration,
+      description: entry.description,
+      status: entry.status,
+      project: {
+        name: entry.project.name,
+        client: { name: entry.project.client.name },
+      },
+    })
   }
 
   const totalMinutes = timeEntries.reduce((sum: number, e: { duration: number }) => sum + e.duration, 0)
