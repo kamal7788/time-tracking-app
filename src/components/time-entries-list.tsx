@@ -375,7 +375,7 @@ export default function TimeEntriesList({ timeEntries, clockSessions, projects, 
       )}
 
       {/* Edit Modal */}
-      <Modal open={!!editingEntry} onClose={() => setEditingEntry(null)} title="Edit Time Entry">
+      <Modal isOpen={!!editingEntry} onClose={() => setEditingEntry(null)} title="Edit Time Entry">
         <div className="space-y-4">
           {editError && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm font-medium" role="alert">
