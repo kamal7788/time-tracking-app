@@ -12,7 +12,8 @@ else
 fi
 
 echo "Seeding database (idempotent)..."
-./node_modules/.bin/tsx prisma/seed.ts || echo "Seed skipped/failed (non-fatal)"
+# Run seed in a subshell to prevent process.exit from killing the container
+( ./node_modules/.bin/tsx prisma/seed.ts ) || echo "Seed skipped/failed (non-fatal)"
 
 echo "Starting application..."
 exec node server.js
