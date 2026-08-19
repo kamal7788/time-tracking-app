@@ -160,4 +160,60 @@ export function Modal({
   )
 }
 
+interface ConfirmDialogProps {
+  open: boolean
+  onClose: () => void
+  onConfirm: () => void
+  title: string
+  message: string
+  confirmLabel?: string
+  destructive?: boolean
+  loading?: boolean
+}
+
+export function ConfirmDialog({
+  open,
+  onClose,
+  onConfirm,
+  title,
+  message,
+  confirmLabel = 'Confirm',
+  destructive = false,
+  loading = false,
+}: ConfirmDialogProps) {
+  return (
+    <Modal
+      isOpen={open}
+      onClose={onClose}
+      title={title}
+      size="sm"
+      footer={
+        <div className="flex gap-3 justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="btn-outline"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onConfirm()
+              onClose()
+            }}
+            disabled={loading}
+            className={cn('btn-primary', destructive && 'bg-red-600 hover:bg-red-700')}
+          >
+            {loading ? '…' : confirmLabel}
+          </button>
+        </div>
+      }
+    >
+      <p className="text-gray-600">{message}</p>
+    </Modal>
+  )
+}
+
 export default Modal

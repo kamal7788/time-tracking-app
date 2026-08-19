@@ -4,6 +4,7 @@ import { loginSchema } from '@/lib/validations'
 import { createAuditLog, AuditActions, AuditEntities } from '@/lib/audit'
 import { rateLimitRedis, getClientIp } from '@/lib/rate-limit-redis'
 import { handleApiError } from '@/lib/api'
+import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(request: NextRequest) {
   try {
