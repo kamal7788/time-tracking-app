@@ -28,6 +28,7 @@ RUN ./node_modules/.bin/prisma generate
 
 # Build the application (Next.js standalone output)
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
 
 # ---------- runner: minimal production image ----------
