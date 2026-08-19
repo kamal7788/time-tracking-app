@@ -5,6 +5,7 @@ import { createAuditLog, AuditActions, AuditEntities } from '@/lib/audit'
 import { rateLimitRedis, getClientIp } from '@/lib/rate-limit-redis'
 import { handleApiError } from '@/lib/api'
 import { NextRequest, NextResponse } from 'next/server'
+import { ZodError } from 'zod'
 
 const LOGIN_LIMIT = 5
 const LOGIN_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
