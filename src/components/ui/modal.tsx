@@ -1,4 +1,3 @@
-"""Reusable modal component with accessible overlay and proper focus management."""
 'use client'
 
 import React, { useEffect, useRef } from 'react'
