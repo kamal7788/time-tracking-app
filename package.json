@@ -23,6 +23,7 @@
     "jose": "^5.2.0",
     "jsonwebtoken": "^9.0.2",
     "@upstash/redis": "^1.31.6",
+    "lucide-react": "^0.503.0",
     "jspdf": "^2.5.1",
     "jspdf-autotable": "^3.8.2",
     "next": "14.2.0",
