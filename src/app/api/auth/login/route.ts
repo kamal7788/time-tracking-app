@@ -6,6 +6,9 @@ import { rateLimitRedis, getClientIp } from '@/lib/rate-limit-redis'
 import { handleApiError } from '@/lib/api'
 import { NextRequest, NextResponse } from 'next/server'
 
+const LOGIN_LIMIT = 5
+const LOGIN_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
