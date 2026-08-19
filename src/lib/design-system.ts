@@ -1,4 +1,4 @@
-"""Professional Tailwind design system with brand colors and dark mode support."""
+// Professional Tailwind design system with brand colors and dark mode support.
 export const designTokens = {
   colors: {
     // Brand colors

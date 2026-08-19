@@ -1,4 +1,4 @@
-"""Global error boundary for graceful error handling and user experience."""
+// Global error boundary for graceful error handling and user experience.
 'use client'
 
 import React from 'react'

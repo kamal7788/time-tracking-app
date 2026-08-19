@@ -41,7 +41,7 @@ export function Modal({
       setTimeout(() => {
         const focusable = modalRef.current?.querySelector(
           'button, input, select, textarea, a, [tabindex]:not([tabindex="-1"])'
-        )
+        ) as HTMLElement | null
         focusable?.focus()
       }, 0)
       // Prevent body scroll
@@ -118,7 +118,7 @@ export function Modal({
         )}
         onClick={(e) => e.stopPropagation()}
       >
-        {(title || description || onClose) && (
+        {(title || description) && (
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-start justify-between">
               <div className="flex-1">

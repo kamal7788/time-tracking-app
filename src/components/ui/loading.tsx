@@ -1,4 +1,4 @@
-"""Loading states and skeleton screens for better user experience."""
+// Loading states and skeleton screens for better user experience.
 'use client'
 
 import React from 'react'
