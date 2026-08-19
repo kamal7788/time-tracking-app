@@ -1,4 +1,3 @@
-"""Button component with consistent styling and variants."""
 'use client'
 
 import React from 'react'
