@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/auth'
-import { getWeekBoundsUTC, parseWeekParam, entryDateKey } from '@/lib/utils'
+import { getWeekBoundsUTC, parseWeekParam, entryDateKey, storedTimeToHHMM } from '@/lib/utils'
 import TimeEntriesList from '@/components/time-entries-list'
 import Link from 'next/link'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/ui/icons'
@@ -45,6 +45,33 @@ export default async function TimeEntriesPage({
       { startTime: 'asc' },
     ],
   })
+
+  interface TimeEntryTransformed {
+    id: string
+    date: string
+    startTime: string
+    endTime: string
+    duration: number
+    description: string | null
+    status: string
+    project: { name: string; client: { name: string } }
+    projectId: string
+  }
+
+  const transformedTimeEntries: TimeEntryTransformed[] = timeEntries.map((entry) => ({
+    id: entry.id,
+    date: entryDateKey(entry.date),
+    startTime: storedTimeToHHMM(entry.startTime),
+    endTime: storedTimeToHHMM(entry.endTime),
+    duration: entry.duration,
+    description: entry.description,
+    status: entry.status,
+    project: {
+      name: entry.project.name,
+      client: { name: entry.project.client.name },
+    },
+    projectId: entry.projectId,
+  }))
 
   const projects = await prisma.project.findMany({
     where: {
@@ -116,7 +143,7 @@ export default async function TimeEntriesPage({
       </div>
 
       <TimeEntriesList
-        timeEntries={timeEntries}
+        timeEntries={transformedTimeEntries}
         clockSessions={clockSessions}
         projects={projects}
         commonWorks={commonWorks}
